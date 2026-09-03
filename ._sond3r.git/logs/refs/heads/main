@@ -1,9 +1,0 @@
-0000000000000000000000000000000000000000 6e570612a38068e2bfa3fa5281fba0fc329677de driemworks <driemworks@idealabs.network> 1786458894 -0500	commit (initial): first commit
-6e570612a38068e2bfa3fa5281fba0fc329677de 6e570612a38068e2bfa3fa5281fba0fc329677de driemworks <driemworks@idealabs.network> 1786458897 -0500	Branch: renamed refs/heads/master to refs/heads/main
-6e570612a38068e2bfa3fa5281fba0fc329677de f33b174174bc1d89a78ad3a0d11b67d084d45539 driemworks <driemworks@idealabs.network> 1786487310 -0500	commit: major restyle, streamlined cloudflare setup
-f33b174174bc1d89a78ad3a0d11b67d084d45539 bdaa23d27b1adce9b8c244a1c3bec5a2976391b3 driemworks <driemworks@idealabs.network> 1786564348 -0500	commit: reimpl search using a static quickbeam generated shard
-bdaa23d27b1adce9b8c244a1c3bec5a2976391b3 8c8a30da76aec2a6b83b3289b1630b5a878da1a6 driemworks <driemworks@idealabs.network> 1786564668 -0500	commit: fix semaphore id derivation
-8c8a30da76aec2a6b83b3289b1630b5a878da1a6 e8b850a0a40b7b4d515e4cb31c164843a20c2dbe driemworks <driemworks@idealabs.network> 1786647156 -0500	commit: wip
-e8b850a0a40b7b4d515e4cb31c164843a20c2dbe 3e5fdfe8636e1e4fb3e39e0b201bdfdc1123ea27 driemworks <driemworks@idealabs.network> 1786647202 -0500	commit (merge): merge
-3e5fdfe8636e1e4fb3e39e0b201bdfdc1123ea27 1cbee462e9225fda7b93f768ed8c902c2d92b9e9 driemworks <driemworks@idealabs.network> 1787597426 -0500	commit: search: rank quickbeam domains by the session lookahead
-1cbee462e9225fda7b93f768ed8c902c2d92b9e9 13d63cf6527b3c13a4a1c57f8b94585b9c382e55 driemworks <driemworks@idealabs.network> 1787967544 -0500	commit: internet archive viewer refactor
