@@ -1,0 +1,116 @@
+// Catalog <-> Fangorn graph.
+//
+// The publisher's library is one `catalog.json`: series → seasons → episodes.
+// Publishing snapshots it into a Fangorn commit graph (vertices + edges) via
+// `fangorn.commit({ vertices, edges, replace: true })`. `replace` gives snapshot
+// semantics, so the remote graph is always exactly the current library — no
+// append-only version reconciliation needed (that's what fangorn-md's
+// latestByPath handles; we don't need it).
+//
+// Vertices are keyed by the catalog's stable ids. Episode vertices carry the
+// x402f pointer (resourceId, price, workerUrl, plaintextHash) the viewer needs
+// to pay + decrypt — the mp4 bytes themselves live in the worker, not the graph.
+
+/** catalog { series:[{id,title,poster?, seasons:[{id,number,title, episodes:[
+ *  {id,number,title, price, published:{resourceId,workerUrl,plaintextHash}}]}]}] }
+ *  → { vertices:[{id,tag,payload}], edges:[{rel,from,to}] } */
+export function buildFlixGraph(catalog) {
+    const vertices = [];
+    const edges = [];
+    for (const series of catalog.series ?? []) {
+        vertices.push({
+            id: series.id,
+            tag: "series",
+            payload: { kind: "series", id: series.id, title: series.title, poster: series.poster ?? null },
+        });
+        for (const season of series.seasons ?? []) {
+            vertices.push({
+                id: season.id,
+                tag: "season",
+                payload: { kind: "season", id: season.id, number: season.number, title: season.title },
+            });
+            edges.push({ rel: "has_season", from: series.id, to: season.id });
+            for (const ep of season.episodes ?? []) {
+                if (!ep.published) continue; // unpublished (not yet encrypted/uploaded) → not in the graph
+                vertices.push({
+                    id: ep.id,
+                    tag: "episode",
+                    payload: {
+                        kind: "episode",
+                        id: ep.id,
+                        number: ep.number,
+                        title: ep.title,
+                        price: String(ep.price),
+                        resourceId: ep.published.resourceId,
+                        workerUrl: ep.published.workerUrl,
+                        plaintextHash: ep.published.plaintextHash,
+                    },
+                });
+                edges.push({ rel: "has_episode", from: season.id, to: ep.id });
+            }
+        }
+    }
+    return { vertices, edges };
+}
+
+/** Remote graph contents { vertices:[{cid?,payload}], edges:[{relation,sourceCid,targetCid}] }
+ *  (or the local {id,...} shape) → nested catalog for the viewer. Wires children
+ *  by edges, sorts seasons/episodes by `number`. */
+export function catalogFromGraph(contents) {
+    const byKey = new Map(); // vertex key (cid or id) → payload
+    const keyOf = (v) => v.cid ?? v.id ?? v.payload?.id;
+    for (const v of contents.vertices ?? []) byKey.set(keyOf(v), v.payload);
+
+    const children = new Map(); // parent key → [child key]
+    for (const e of contents.edges ?? []) {
+        const from = e.sourceCid ?? e.from;
+        const to = e.targetCid ?? e.to;
+        if (!children.has(from)) children.set(from, []);
+        children.get(from).push(to);
+    }
+    // Map an id → its vertex key, so edges (which reference keys) resolve to payloads.
+    const keyById = new Map();
+    for (const [key, payload] of byKey) if (payload?.id) keyById.set(payload.id, key);
+
+    const kids = (key, kind) =>
+        (children.get(key) ?? [])
+            .map((ck) => byKey.get(ck))
+            .filter((p) => p && p.kind === kind);
+
+    const series = [...byKey.values()]
+        .filter((p) => p.kind === "series")
+        .map((s) => {
+            const sKey = keyById.get(s.id);
+            const seasons = kids(sKey, "season")
+                .map((se) => ({
+                    ...se,
+                    episodes: kids(keyById.get(se.id), "episode").sort((a, b) => a.number - b.number),
+                }))
+                .sort((a, b) => a.number - b.number);
+            return { ...s, seasons };
+        });
+    return { series };
+}
+
+// ── self-check: catalog → graph → catalog round-trips structure ───────────────
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const cat = {
+        series: [{
+            id: "sr1", title: "Demo", seasons: [{
+                id: "sr1-s1", number: 1, title: "Season 1", episodes: [
+                    { id: "sr1-s1-e2", number: 2, title: "Two", price: "1000", published: { resourceId: "0xbb", workerUrl: "w", plaintextHash: "0x02" } },
+                    { id: "sr1-s1-e1", number: 1, title: "One", price: "1000", published: { resourceId: "0xaa", workerUrl: "w", plaintextHash: "0x01" } },
+                ],
+            }],
+        }],
+    };
+    const g = buildFlixGraph(cat);
+    // local {id,...} vertices → normalize to the reader's expected shape
+    const contents = { vertices: g.vertices.map((v) => ({ id: v.id, payload: v.payload })), edges: g.edges };
+    const back = catalogFromGraph(contents);
+    const eps = back.series[0].seasons[0].episodes;
+    if (back.series.length !== 1) throw new Error("series lost");
+    if (eps.length !== 2 || eps[0].number !== 1 || eps[1].number !== 2) throw new Error("episodes not sorted/wired");
+    if (eps[0].resourceId !== "0xaa") throw new Error("episode pointer lost");
+    console.log("graph.js self-check ok");
+}

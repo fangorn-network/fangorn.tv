@@ -1,0 +1,55 @@
+// Publisher-side settlement crypto (envelope model). Lifted from
+// x402f/examples/node/settle.ts, trimmed to the SELL half — the server encrypts
+// each episode's mp4 and uploads {ciphertext, sealed DEK} to the access worker.
+// The buyer half (download+decrypt) runs in the browser (src/buy.js).
+//
+// Envelope: bytes are AES-256-GCM'd under a random 32-byte DEK. The big
+// ciphertext goes to the worker's R2 (keyed by resourceId); the DEK is sealed to
+// the worker's X25519 pubkey and stored alongside. The worker never sees
+// plaintext and only unseals the DEK after an on-chain settlement check.
+//
+// Bulk layout in R2:  nonce(12) || aes-256-gcm(ct||tag)
+
+import { seal, sha256Hex } from "@fangorn-network/sdk";
+import { bytesToHex, hexToBytes } from "viem";
+
+const NONCE_LEN = 12;
+
+/** GET the worker's static X25519 pubkey (what DEKs are sealed to). */
+export async function getWorkerPubkey(workerUrl) {
+    const res = await fetch(`${workerUrl}/pubkey`);
+    if (!res.ok) throw new Error(`/pubkey failed: ${res.status}`);
+    const { pubkey } = await res.json();
+    return hexToBytes(pubkey);
+}
+
+/**
+ * Envelope-encrypt `plaintext` and upload {ciphertext, sealed DEK} to the
+ * access worker's R2. Returns the hashes to commit on-chain / verify against.
+ */
+export async function encryptAndUpload({ plaintext, resourceId, workerUrl }) {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const nonce = crypto.getRandomValues(new Uint8Array(NONCE_LEN));
+    const aesKey = await crypto.subtle.importKey("raw", dek, "AES-GCM", false, ["encrypt"]);
+    const aesCt = new Uint8Array(
+        await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aesKey, plaintext),
+    );
+
+    const ciphertext = new Uint8Array(NONCE_LEN + aesCt.length);
+    ciphertext.set(nonce, 0);
+    ciphertext.set(aesCt, NONCE_LEN);
+
+    const sealedDek = seal(dek, await getWorkerPubkey(workerUrl), resourceId);
+
+    const res = await fetch(`${workerUrl}/upload/${resourceId}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Sealed-Dek": bytesToHex(sealedDek),
+        },
+        body: ciphertext,
+    });
+    if (!res.ok) throw new Error(`/upload failed: ${res.status} ${await res.text()}`);
+
+    return { ciphertextHash: sha256Hex(ciphertext), plaintextHash: sha256Hex(plaintext) };
+}

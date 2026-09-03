@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sond3r-tv",
+  "description": "An agent that watches television with you, and cuts it up.",
+  "owner": {
+    "name": "Tony Riemer"
+  },
+  "plugins": [
+    {
+      "name": "sond3r-tv",
+      "description": "Search, channel-tune, and supercut a SOND3R corpus through a live browser tab's WebMCP tools. Includes the scene-channel loop that retunes off what the viewer skips.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

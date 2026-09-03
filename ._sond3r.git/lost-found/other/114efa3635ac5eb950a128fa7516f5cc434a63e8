@@ -1,0 +1,30 @@
+{
+  "name": "fttf-flix",
+  "version": "0.1.0",
+  "description": "Pay-once-watch-forever encrypted video, published to Fangorn and settled with x402f",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"pnpm dev:server\" \"pnpm dev:web\"",
+    "dev:server": "node --env-file=.env server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "graph": "node server/graph.js media"
+  },
+  "packageManager": "pnpm@10.27.0",
+  "dependencies": {
+    "@fangorn-network/sdk": "2026.7.1-4.0",
+    "@semaphore-protocol/group": "^4.14.2",
+    "@semaphore-protocol/identity": "^4.14.2",
+    "@semaphore-protocol/proof": "^4.14.2",
+    "multiformats": "^14.0.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "viem": "^2.55.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^10.0.3",
+    "vite": "^8.1.4"
+  }
+}

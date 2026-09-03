@@ -1,0 +1,91 @@
+Prompt 1:
+
+Make a 1:00 short documentary / essay film about **humanity's relationship with machines**.
+
+Use the audiovisual archive available through Fangorn (using WebMCP - https://tv.fangorn.network) as your raw material. Explore it yourself and find the footage, moments, voices, and unexpected connections that make the strongest film.
+
+Begin with optimism about machines and progress. Gradually complicate that relationship. End somewhere surprising—an image, idea, or juxtaposition that reframes what came before.
+
+You are the editor. Search inside the archive by meaning, connect material from different sources and periods, and construct a coherent piece from material that was never originally intended to belong together.
+
+Use short title cards and sparse overlay text to make the story and your editorial choices legible. Show rather than explain.
+
+Make it feel like a thoughtful, cinematic archival documentary or essay film: intellectually curious, occasionally strange, and genuinely watchable. Avoid generic AI imagery, stock footage, corporate-demo aesthetics, and filler. Prioritize fast cuts that smoothly transition into each other. 
+
+Do not make the film about Fangorn or explain the technology. **Demonstrate what becomes possible when an agent can actually work with a large body of published information.**
+
+Take creative risks. Make something a human editor would be proud to have made.
+
+Produce the finished  1:00 media artifact.
+
+
+---
+
+Make a 1:00 short documentary / essay film about humanity's relationship with machines.
+
+EXECUTION DIRECTIVE: Treat this as a completely fresh run. Do NOT inspect the local workspace, repo, or filesystem for existing video files, past scripts, or previous session outputs. Do NOT check if this video was already made or attempt to skip/reuse work. Begin immediately by querying the Fangorn.tv directly via WebMCP to construct a new, unique artifact from scratch.
+
+Use the audiovisual archive available through Fangorn.tv (using WebMCP - https://tv.fangorn.network) as your raw material. Explore it yourself and find the footage, moments, voices, and unexpected connections that make the strongest film.
+
+Begin with optimism about machines and progress. Gradually complicate that relationship. End somewhere surprising—an image, idea, or juxtaposition that reframes what came before.
+
+You are the editor. Search inside the archive by meaning, connect material from different sources and periods, and construct a coherent piece from material that was never originally intended to belong together.
+
+Use short title cards and sparse overlay text to make the story and your editorial choices legible. Show rather than explain.
+
+Make it feel like a thoughtful, cinematic archival documentary or essay film: intellectually curious, occasionally strange, and genuinely watchable. Avoid generic AI imagery, stock footage, corporate-demo aesthetics, and filler. Prioritize fast cuts that smoothly transition into each other.
+
+Do not make the film about Fangorn or explain the technology. Demonstrate what becomes possible when an agent can actually work with a large body of published information.
+
+Take creative risks. Make something a human editor would be proud to have made.
+
+Produce the finished 1:00 media artifact.
+
+---
+
+Prompt 2:
+
+Make a 2:00 short documentary / essay film about humanity's attempt to isolate itself from the natural world.
+
+Use the audiovisual archive available through Fangorn (using WebMCP - https://tv.fangorn.network) as your raw material. Search inside the transcripts and visual indexes to connect material across different eras and formats.
+
+Narrative Arc:
+
+    Begin with triumph: The mastering of weather, soil, and wild spaces—dams turning deserts green, air conditioning, synthetic materials, pesticide foggers, paved horizons.
+
+    Complicate it: Show the subtle claustrophobia of total control—sterile suburban living rooms, plastic-wrapped foods, hermetically sealed offices, people watching simulated nature through glass or screens.
+
+    End somewhere surprising: An image or audio juxtaposition where nature silently re-asserts itself inside an artificial space, or where human body language reveals an unexpected longing for the chaos we spent centuries taming.
+
+Editorial Constraints:
+
+    Use short title cards or sparse text overlays to frame the chapter transitions.
+
+    Pay close attention to sound design: transition from heavy environmental sounds to muted, synthetic interior humming, ending on an arresting audio beat.
+
+    Avoid generic stock footage tropes. Find peculiar, highly specific historical moments that feel cinema-verité or hauntingly quiet.
+
+Produce the finished 2:00 media artifact.
+
+---
+
+Prompt 3:
+Make a 2:00 short comedy/essay film about the terrifying pressure of mid-century social etiquette and dating rules.
+
+Use the audiovisual archive available through Fangorn (using WebMCP - https://tv.fangorn.network). Search inside the transcripts for 1940s–1970s educational films, hygiene reels, dating guides, and workplace conduct videos.
+
+Narrative Arc:
+
+    Begin with total confidence: Show the "perfect" mid-century man and woman. Use voiceover about the vital importance of posture, firm handshakes, and dinner-table perfection.
+
+    Complicate it: The rules escalate into absurdity. Cut together a rapid-fire montage of increasingly contradictory, stressful, or bizarre advice (how to sit, how to chew, how to hold a telephone, how to smile without looking crazy).
+
+    End somewhere surprising: The pressure breaks. End with a gloriously awkward moment, a total failure of etiquette, or a subject looking directly into the lens like they are trapped in a polite nightmare.
+
+Editorial Constraints:
+
+    Use dry, sarcastic title cards to chapter the film (e.g., Rule 1: Never Breathe.).
+
+    Exploit the gap between the narrator’s calm, authoritative voice and the visible discomfort or unnatural stiffness of the actors.
+
+Produce the finished 2:00 media artifact.

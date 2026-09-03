@@ -1,0 +1,210 @@
+<!doctype html>
+<!--
+  The terms the sign-in signature binds a publisher to. Served statically at
+  /terms.html — vite serves public/ in dev, copies it into dist/ on build, and
+  server/index.js serveStatic() hands it out from there. No route, no component.
+
+  server/auth.js links THIS path inside the signed SIWE message, so the URL is
+  part of what publishers sign. Moving or renaming this file breaks that link
+  for every attestation collected afterwards.
+
+  ⚠ PLACEHOLDERS marked [FILL] must be completed before this is public, and the
+  DMCA agent must be registered with the U.S. Copyright Office (dmca.copyright.gov,
+  $6) for the safe harbor these terms assume to actually exist. Have counsel read
+  this before you rely on it.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOND3R — Terms</title>
+<style>
+  :root { color-scheme: light dark; --fg: #16181d; --dim: #5a6170; --bg: #fbfbfc; --line: #e3e5ea; --accent: #2b4acb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e8ee; --dim: #99a1b3; --bg: #14161b; --line: #2a2e38; --accent: #8fa6ff; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; margin: 2.5rem 0 .6rem; letter-spacing: -.005em; }
+  .sub { color: var(--dim); margin: 0 0 2.5rem; font-size: .95rem; }
+  p, li { margin: .6rem 0; }
+  ul { padding-left: 1.2rem; }
+  a { color: var(--accent); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em;
+         background: color-mix(in srgb, var(--fg) 8%, transparent); padding: .1em .35em; border-radius: 3px; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.15rem; margin: 1.25rem 0; }
+  .fill { background: #ffe9a8; color: #4a3b00; padding: .05em .4em; border-radius: 3px; font-weight: 600; }
+  footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); color: var(--dim); font-size: .875rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>SOND3R — Terms of Service</h1>
+<p class="sub">
+  Operated by <b>Fangorn LLC</b>, a Delaware limited liability company.<br>
+  Last updated <span class="fill">[FILL: date]</span>.
+</p>
+
+<p>
+  SOND3R is a publishing tool. Publishers encrypt their own files, set their own
+  prices, and sell directly to buyers. Fangorn LLC operates the software and the
+  relay that stores encrypted files; it is not a party to any sale.
+</p>
+
+<h2>1. What we do not do</h2>
+<p>These are properties of how the system is built, not just promises:</p>
+<ul>
+  <li><b>We never hold your money.</b> Payment goes from the buyer's wallet to the
+      publisher's wallet directly on-chain. Fangorn LLC takes no custody of funds
+      at any point and cannot move, freeze, or reverse a payment.</li>
+  <li><b>We never hold your keys.</b> Every on-chain action is signed by your own
+      wallet. We cannot sign, spend, or publish on your behalf.</li>
+  <li><b>We cannot read published files.</b> Files are encrypted before storage
+      and the decryption key is released only to a wallet the blockchain says has
+      paid. Neither Fangorn LLC nor any storage provider can decrypt them.</li>
+</ul>
+<p>
+  This means we cannot resolve payment disputes, issue refunds, or recover a lost
+  wallet. If you lose access to your wallet, we cannot help you.
+</p>
+
+<h2>2. Publisher terms</h2>
+<p>
+  When you sign in to publish, your wallet signs a message containing this
+  statement:
+</p>
+<div class="box">
+  <i>I own or am licensed to distribute everything I publish from this address,
+  and I accept the Publisher Terms, including takedown on notice.</i>
+</div>
+<p>
+  That signature is a record we keep. It identifies the wallet address, the exact
+  text agreed to, and when. By publishing you represent and warrant that you hold
+  all rights necessary to distribute each file you upload, and you agree to
+  indemnify Fangorn LLC against claims arising from material you publish.
+</p>
+<p>You may not publish:</p>
+<ul>
+  <li>Material you do not own or hold a licence to distribute.</li>
+  <li>Child sexual abuse material, or any content sexualizing a minor. We report
+      this to the National Center for Missing &amp; Exploited Children and to law
+      enforcement, and we permanently ban the wallet.</li>
+  <li>Material that is unlawful to distribute, incites violence, or targets a
+      private individual for harassment.</li>
+  <li>Malware, or material designed to defraud a buyer about what they are
+      purchasing.</li>
+</ul>
+
+<h2>3. Takedown</h2>
+<p>
+  Every published file has an on-chain disable switch. Setting it makes the access
+  gate refuse the decryption key to <em>everyone</em>, including buyers who have
+  already paid. Publishers can use it on their own files at any time from the
+  publisher tools. Fangorn LLC can use it on any file in response to a valid legal
+  notice, a violation of these terms, or a court order.
+</p>
+<p>
+  <b>A takedown does not refund anyone.</b> Payments are final and on-chain; they
+  cannot be reversed by us or by the publisher. A publisher who takes down a file
+  buyers have paid for may owe those buyers a refund directly, and is responsible
+  for arranging it.
+</p>
+
+<h2>4. Copyright — DMCA notices</h2>
+<p>
+  Fangorn LLC responds to notices under the Digital Millennium Copyright Act, 17
+  U.S.C. § 512. Send notices to our designated agent:
+</p>
+<div class="box">
+  <b>DMCA Designated Agent — Fangorn LLC</b><br>
+  <span class="fill">[FILL: agent name]</span><br>
+  <span class="fill">[FILL: street address]</span><br>
+  <span class="fill">[FILL: phone]</span><br>
+  Email: <span class="fill">[FILL: dmca@… address]</span>
+</div>
+<p>A notice must include all six elements required by § 512(c)(3):</p>
+<ul>
+  <li>Your physical or electronic signature.</li>
+  <li>Identification of the copyrighted work claimed to be infringed.</li>
+  <li>Identification of the material claimed to be infringing, specific enough for
+      us to locate it — for a SOND3R file, its <code>resourceId</code> or its
+      <code>/c/…</code> link.</li>
+  <li>Your address, telephone number, and email address.</li>
+  <li>A statement that you have a good-faith belief the use is not authorized by
+      the copyright owner, its agent, or the law.</li>
+  <li>A statement, <b>under penalty of perjury</b>, that the information is
+      accurate and that you are authorized to act on the owner's behalf.</li>
+</ul>
+<p>
+  On a complete notice we disable the file, and we notify the publisher with a copy
+  of the notice. Misrepresenting that material is infringing can make you liable
+  for damages under § 512(f).
+</p>
+
+<h2>5. Counter-notification</h2>
+<p>
+  If your file was disabled and you believe that was a mistake or a
+  misidentification, you may send our agent a counter-notice under § 512(g)
+  including: your signature; identification of the disabled material and where it
+  appeared; a statement under penalty of perjury that you have a good-faith belief
+  it was disabled through mistake or misidentification; and your name, address and
+  phone number, with consent to the jurisdiction of the federal district court for
+  your district (or, if outside the United States, the District of Delaware) and
+  acceptance of service from the complaining party. We may restore the file in 10
+  to 14 business days unless the complaining party tells us they have filed suit.
+</p>
+
+<h2>6. Repeat infringers</h2>
+<p>
+  We terminate the publishing access of any wallet that is the subject of repeated
+  valid infringement notices, and we may terminate for a single flagrant case.
+  Because a wallet address is the account, termination means that address can no
+  longer stage or publish, and its published files are disabled.
+</p>
+
+<h2>7. Buyers</h2>
+<p>
+  A purchase pays the publisher for ongoing access to one file. It is not a
+  transfer of copyright and grants no right to redistribute. Purchases are final:
+  they settle on-chain and cannot be reversed by us. Access can end if the file is
+  taken down by its publisher or under section 3 or 4 above — that risk is the
+  publisher's to manage, and it is why we say up front that we cannot refund you.
+</p>
+
+<h2>8. Disclaimers and liability</h2>
+<p>
+  The service is provided "as is", without warranties of any kind. To the maximum
+  extent permitted by law, Fangorn LLC is not liable for indirect, incidental, or
+  consequential damages, and our total liability is limited to the greater of
+  <span class="fill">[FILL: amount, e.g. US$100]</span> or the fees you paid us in
+  the preceding twelve months. We do not guarantee that stored files remain
+  available, that the network is reachable, or that any blockchain or third-party
+  service we depend on continues to operate.
+</p>
+
+<h2>9. Governing law</h2>
+<p>
+  These terms are governed by the laws of the State of Delaware, without regard to
+  conflict-of-laws rules. Disputes go to the state or federal courts located in
+  Delaware.
+</p>
+
+<h2>10. Changes</h2>
+<p>
+  We may update these terms. The version in force for a given publisher is the one
+  linked from the message they signed at sign-in; signing in again agrees to the
+  current version.
+</p>
+
+<footer>
+  Fangorn LLC · Delaware ·
+  <span class="fill">[FILL: contact email]</span> ·
+  <a href="/">back to SOND3R</a>
+</footer>
+
+</main>
+</body>
+</html>

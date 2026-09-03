@@ -1,0 +1,12 @@
+node_modules
+# dist/ is NOT ignored: it is built on a dev machine and COPYd in, because
+# bundling react+privy+transformers needs ~2GB of RAM and OOM-kills the build on
+# a small host. Run `pnpm build` before `docker build`.
+.git
+.env
+.env.local
+.fangorn
+agent-library
+whisper-env
+.vscode
+*.log

@@ -1,0 +1,18 @@
+/node_modules
+media
+dist
+.env
+.env.local
+.fangorn
+media/**/*.mp4
+.claude
+.vscode
+# Publisher rights attestations (server/auth.js). Real addresses and signatures —
+# it's the operator's compliance record, not source. Back it up; don't commit it.
+attestations.jsonl
+state/
+stage_volumes/
+
+# quickbeam embeddings exports — served by scripts/serve-embeddings.js
+*.embeddings.ndjson
+/notes

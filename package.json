@@ -1,0 +1,37 @@
+{
+  "name": "sond3r",
+  "version": "0.1.0",
+  "description": "Pay-once-own-forever encrypted files of any type, published to Fangorn and settled with x402f",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"pnpm dev:server\" \"pnpm dev:web\"",
+    "dev:server": "node --env-file=.env server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "graph": "node server/graph.js media",
+    "shard": "node server/shard.js",
+    "test": "node server/env.js && node server/storage-auth.js && node server/settle.js && node server/graph.js && node server/subtitles.js && node server/enrich.js && node server/shard.js --selfcheck && node server/auth.js && node src/llm/embed.js && node src/pay/encrypt.js && node server/index.js --selfcheck && node --env-file-if-exists=.env server/tenancy.test.js && node src/catalog/search.js && node src/geometry/kernel.js && node src/geometry/walk.js && node src/geometry/probes.js && node src/catalog/browse.js && node src/catalog/channels.js && node src/catalog/timeline.js && node src/catalog/genres.js && node src/catalog/wiki.js && node src/ui/nav.js && node src/ui/intent.js && node src/ui/webmcp.js && node src/pay/stream.js && node src/pay/buy.js && node scripts/publish.mjs --selfcheck",
+    "probes": "node scripts/bake-probes.js",
+    "demo": "vite build && node --env-file-if-exists=.env scripts/serve-embeddings.js ${EMBEDDINGS:-archive-videos-test-2.embeddings.ndjson} --out dist --base \"${DEMO_BASE:-}\" && cp dist/index.html dist/404.html && printf '/*  /index.html  200\\n' > dist/_redirects",
+    "demo:deploy": "pnpm demo && wrangler pages deploy dist --project-name ${CF_PAGES_PROJECT:-tv} --branch ${CF_PAGES_BRANCH:-main}"
+  },
+  "packageManager": "pnpm@10.27.0",
+  "dependencies": {
+    "@fangorn-network/sdk": "2026.8.18-dev",
+    "@noble/hashes": "^2.0.0",
+    "viem": "^2.55.1"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@privy-io/react-auth": "^3.35.2",
+    "@semaphore-protocol/group": "^4.14.2",
+    "@semaphore-protocol/identity": "^4.14.2",
+    "@semaphore-protocol/proof": "^4.14.2",
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^10.0.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vite": "^8.1.4"
+  }
+}

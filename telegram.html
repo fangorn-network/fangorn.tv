@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+        <title>SOND3R — wallet</title>
+        <meta name="color-scheme" content="dark light" />
+        <!-- Telegram's own SDK. It must load before the app so window.Telegram.WebApp
+             exists on first render, and it is the ONLY external script here. -->
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>html,body { margin:0; background: var(--tg-theme-bg-color, #05070a); }</style>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/telegram.jsx"></script>
+    </body>
+</html>

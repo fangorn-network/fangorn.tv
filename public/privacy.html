@@ -1,0 +1,138 @@
+<!doctype html>
+<!--
+  Served statically at /privacy.html, exactly like terms.html beside it — vite
+  serves public/ in dev, copies it into dist/ on build, and serveStatic() hands
+  it out from there. No route, no component, nothing to bundle.
+
+  A React page at /privacy was tried first and 404s on any static host that
+  doesn't fall back to index.html. This one is a file, so every host serves it.
+
+  ⚠ [FILL] placeholders must be completed before this is public, and counsel
+  should read it. It is deliberately broad because the site is deliberately
+  thin: no accounts, no analytics, no database of people.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOND3R — Privacy</title>
+<style>
+  :root { color-scheme: light dark; --fg: #16181d; --dim: #5a6170; --bg: #fbfbfc; --line: #e3e5ea; --accent: #2b4acb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e8ee; --dim: #99a1b3; --bg: #14161b; --line: #2a2e38; --accent: #8fa6ff; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; margin: 2.5rem 0 .6rem; letter-spacing: -.005em; }
+  .sub { color: var(--dim); margin: 0 0 2.5rem; font-size: .95rem; }
+  p, li { margin: .6rem 0; }
+  ul { padding-left: 1.2rem; }
+  a { color: var(--accent); }
+  .fill { background: #ffe9a8; color: #4a3b00; padding: .05em .4em; border-radius: 3px; font-weight: 600; }
+  footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); color: var(--dim); font-size: .875rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>SOND3R — Privacy Policy</h1>
+<p class="sub">
+  Operated by <b>Fangorn LLC</b>, a Delaware limited liability company.<br>
+  Last updated <span class="fill">[FILL: date]</span>.
+</p>
+
+<p>
+  SOND3R is a publishing tool and a viewer for files other people publish. There
+  are no accounts, no profiles, and nothing to sign up for, so there is very
+  little about you for us to have. This page says what little there is.
+</p>
+
+<h2>1. What we collect</h2>
+<p>
+  Nothing beyond the ordinary request logs kept by our infrastructure provider,
+  Cloudflare, which sits in front of this site. Those logs hold what any web
+  server sees: IP address, user agent, the URL requested, and a timestamp. They
+  exist so the service can be kept running and abuse can be stopped, and they are
+  retained under Cloudflare's own policies rather than ours.
+</p>
+<p>
+  We run no analytics, no advertising, no tracking pixels, and no third-party
+  cookies. We do not ask for your name, your email address, or a password. We do
+  not sell, rent, or share personal information, because we do not assemble any.
+</p>
+
+<h2>2. What stays in your browser</h2>
+<p>
+  Preferences and progress — what you rated, where you stopped watching, a
+  publisher sign-in token — are stored locally by your browser and are not sent
+  to us as a profile. Clearing your browser storage erases them.
+</p>
+
+<h2>3. Wallets and the blockchain</h2>
+<p>
+  If you connect a wallet, we see its public address and nothing else: never your
+  keys, never your seed phrase. Purchases and publisher registrations settle on a
+  public blockchain, where the transaction, the addresses and the amounts are
+  permanent public records published by the network, not by us. We cannot edit or
+  delete them, and neither can you. Your wallet provider and the payment
+  facilitator are separate services with their own privacy policies.
+</p>
+<p>
+  A publisher's sign-in signature and rights attestation are recorded in our
+  attestation log, which is the compliance record of who claimed rights to what.
+  It holds the wallet address, what was claimed, and when.
+</p>
+
+<h2>4. Content, hosting, and ownership</h2>
+<p>
+  We do not own, create, or curate the content listed here, and we do not host it
+  in any sense that gives us a copy of it: publishers encrypt their files
+  themselves, we store the ciphertext we cannot read, and public-domain material
+  is served from outside archives we do not run. The catalog is an index.
+  Nothing here is a claim of ownership over any work.
+</p>
+<p>
+  We do not review listings before they appear. Takedown and repeat-infringer
+  handling is in the <a href="/terms.html">Terms</a>.
+</p>
+
+<h2>5. Third parties</h2>
+<p>
+  Using this site necessarily involves parties other than us: Cloudflare, your
+  wallet provider, the payment facilitator, the blockchain and its RPC providers,
+  IPFS gateways, a publisher's own storage, and outside archives. Each handles
+  data under its own terms, which we do not control.
+</p>
+
+<h2>6. Your choices</h2>
+<p>
+  You can browse without connecting a wallet, and you can clear local storage at
+  any time. Where the law gives you rights over personal data — access, deletion,
+  correction — write to us and we will do what we can, which for on-chain records
+  is nothing, because no one can alter them.
+</p>
+
+<h2>7. Children</h2>
+<p>
+  The service is not directed at children under 13, and we do not knowingly
+  collect information from them.
+</p>
+
+<h2>8. Changes</h2>
+<p>
+  We may update this policy. The current version is always the one at this URL,
+  with its date at the top.
+</p>
+
+<footer>
+  Fangorn LLC · Delaware ·
+  <span class="fill">[FILL: contact email]</span> ·
+  <a href="/terms.html">Terms</a> ·
+  <a href="/">back to SOND3R</a>
+</footer>
+
+</main>
+</body>
+</html>

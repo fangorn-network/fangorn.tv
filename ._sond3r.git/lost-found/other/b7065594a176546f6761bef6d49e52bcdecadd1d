@@ -1,0 +1,40 @@
+// Injected browser wallet (MetaMask etc.) via viem. The server never holds a
+// key; this wallet signs everything — the publisher's createResource/commit txs
+// AND the buyer's payment/settlement.
+// ponytail: injected wallet only. Swap in Privy (embedded/email wallets) later
+// for viewers without an extension — it exposes the same viem WalletClient.
+
+import { createWalletClient, createPublicClient, custom, http } from "viem";
+import { arbitrumSepolia } from "viem/chains";
+
+const RPC_URL = import.meta.env.VITE_CHAIN_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
+
+export const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http(RPC_URL) });
+
+/** Prompt the extension, switch to Arbitrum Sepolia, return a viem WalletClient. */
+export async function connectWallet() {
+    const eth = window.ethereum;
+    if (!eth) throw new Error("No injected wallet found — install MetaMask.");
+    const [address] = await eth.request({ method: "eth_requestAccounts" });
+    const chainIdHex = `0x${arbitrumSepolia.id.toString(16)}`;
+    try {
+        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainIdHex }] });
+    } catch (e) {
+        if (e?.code === 4902) {
+            await eth.request({
+                method: "wallet_addEthereumChain",
+                params: [{
+                    chainId: chainIdHex,
+                    chainName: "Arbitrum Sepolia",
+                    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+                    rpcUrls: [RPC_URL],
+                    blockExplorerUrls: ["https://sepolia.arbiscan.io"],
+                }],
+            });
+        } else if (e?.code !== 4001) {
+            throw e;
+        }
+    }
+    const walletClient = createWalletClient({ account: address, chain: arbitrumSepolia, transport: custom(eth) });
+    return { address, walletClient };
+}

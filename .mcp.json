@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "chrome-webmcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.8.0",
+        "--categoryExperimentalWebmcp",
+        "--browserUrl=http://172.31.64.1:9223"
+      ]
+    }
+  }
+}

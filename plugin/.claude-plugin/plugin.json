@@ -1,0 +1,9 @@
+{
+  "name": "sond3r-tv",
+  "version": "0.1.0",
+  "description": "Drive a SOND3R storefront from Claude Code through the page's own WebMCP tools: search a corpus by what is said and shown, build channels out of scenes rather than files, and cut supercuts and gifs out of remote films without downloading them.",
+  "author": {
+    "name": "Tony Riemer"
+  },
+  "mcpServers": "./.mcp.json"
+}

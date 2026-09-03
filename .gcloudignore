@@ -1,0 +1,16 @@
+# gcloud does NOT read .dockerignore, and with no file here it falls back to
+# .gitignore — which lets whisper-env/ (6.4G) and media/ non-mp4 files through.
+# `gcloud run deploy --source .` then spends half an hour uploading a 10GB zip
+# before the build even starts. Keep this in sync with .dockerignore.
+.git
+node_modules
+dist
+.env
+.env.local
+.fangorn
+media
+agent-library
+whisper-env
+.claude
+.vscode
+*.log

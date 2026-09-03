@@ -1,0 +1,51 @@
+# Local: `pnpm build && docker compose up --build` → http://localhost:8787
+#
+# This is the whole storefront in one container, and it is the SAME image that
+# gets hosted — there is no longer a "local publisher" build and a "hosted read
+# relay" build, because the relay no longer stages anything either way.
+# Publishers encrypt in their browser and upload to the access worker at
+# WORKER_URL — the operator's Cloudflare account — and their manifest lives in
+# the R2 bucket behind it.
+#
+# The facilitator is not here on purpose — it's a separate service (already
+# deployed on Cloud Run) shared by every storefront.
+#
+# dist/ is built on the host and COPYd in (see Dockerfile), so `pnpm build`
+# first. `--build` alone will not rebuild the frontend.
+services:
+  relay:
+    build:
+      context: .
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    environment:
+      # What a hosted relay hands unattended buyers via GET /api/config. Must be
+      # reachable from OUTSIDE this container — the default in .env points at
+      # localhost, which is useless to anyone but you.
+      PUBLIC_FACILITATOR_URL: ${PUBLIC_FACILITATOR_URL:-https://facilitator.fangorn.network}
+      # Unset = publishing is on. Unlike before, this is now safe to leave on in
+      # public: there is no upload endpoint and no disk to fill. It still gates
+      # sign-in and the commit path, so set it on a pure storefront.
+      READ_ONLY: ${READ_ONLY:-}
+      # Not optional in either mode: without a dedicated gateway every namespace
+      # read falls back to ipfs.io and /api/catalog eventually gives up.
+      PINATA_GATEWAY: ${PINATA_GATEWAY:-}
+      # The attestation log is the compliance record of who claimed rights to
+      # what. It is the ONLY thing this container writes, which is why it is the
+      # only volume below.
+      ATTESTATION_LOG: ${ATTESTATION_LOG:-/app/state/attestations.jsonl}
+    volumes:
+      # Just the attestation log. There is no media/ any more — no staged files,
+      # no per-publisher manifest, nothing else to lose.
+      - ./state:/app/state
+    restart: unless-stopped
+    healthcheck:
+      # /api/config is public and touches no chain, so it answers even if the RPC
+      # is down — it tests the process, not the internet.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8787/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

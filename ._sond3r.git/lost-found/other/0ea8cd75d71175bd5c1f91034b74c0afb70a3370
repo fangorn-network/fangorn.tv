@@ -1,0 +1,238 @@
+// fttf-flix local server. Single publisher, no wallet key: it holds a SERVICE
+// key only to construct the Fangorn engine (graph build/commit + IPFS pinning)
+// and never signs a user's on-chain tx. The publisher's browser wallet signs
+// the two kinds of tx a publish needs — createResource(price) per new episode
+// and one commitStateRoot for the whole library graph. Buyers never touch this
+// server except to READ the published catalog; their pay+decrypt runs in the
+// browser against the facilitator/worker directly.
+//
+// Flow (mirrors fangorn-md's prepare → sign → settle split):
+//   POST /api/publish/prepare  server: encrypt+upload each NEW episode's mp4 to
+//     the worker, build the catalog→graph commit, return unsigned txs.
+//   (browser signs+sends every tx)
+//   POST /api/settle           server: mark those episodes published on disk.
+
+import { createServer } from "node:http";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, extname, normalize } from "node:path";
+import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
+import {
+    createPublicClient, http, encodeFunctionData, keccak256, stringToBytes, toHex,
+} from "viem";
+import { CID } from "multiformats/cid";
+import { buildFlixGraph, catalogFromGraph } from "./graph.js";
+import { encryptAndUpload } from "./settle.js";
+
+const PORT = Number(process.env.PORT ?? 8787);
+const ROOT = process.cwd();
+const MEDIA_DIR = join(ROOT, "media");
+const CATALOG_FILE = join(MEDIA_DIR, "catalog.json");
+const DIST = join(ROOT, "dist");
+const NAMESPACE = "fttfflix";
+const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+
+const WORKER_URL = (process.env.WORKER_URL ?? "").replace(/\/$/, "");
+const SETTLEMENT_REGISTRY_ADDR = process.env.SETTLEMENT_REGISTRY_ADDR;
+const DEFAULT_PRICE = process.env.RESOURCE_PRICE ?? "1000";
+
+for (const key of ["ETH_PRIVATE_KEY", "WORKER_URL", "SETTLEMENT_REGISTRY_ADDR"]) {
+    if (!process.env[key]) {
+        console.error(`Missing ${key} — copy .env.example to .env and fill it in.`);
+        process.exit(1);
+    }
+}
+
+const fangorn = Fangorn.create({
+    privateKey: process.env.ETH_PRIVATE_KEY, // service key: engine + Pinata only
+    storage: process.env.PINATA_JWT
+        ? { pinata: { jwt: process.env.PINATA_JWT, gateway: process.env.PINATA_GATEWAY } }
+        : undefined,
+    domain: "localhost",
+    config: FangornConfig,
+});
+
+const CHAIN = FangornConfig.chain;
+const DATA_REGISTRY = FangornConfig.dataRegistryContractAddress;
+const publicClient = createPublicClient({ chain: CHAIN, transport: http(FangornConfig.rpcUrl) });
+
+const DATA_REGISTRY_ABI = [
+    { type: "function", name: "getNamespaceHead", stateMutability: "view", inputs: [{ name: "publisher", type: "address" }], outputs: [{ type: "bytes32" }] },
+    { type: "function", name: "commitStateRoot", stateMutability: "nonpayable", inputs: [{ name: "old_root", type: "bytes32" }, { name: "new_root", type: "bytes32" }], outputs: [] },
+];
+const CREATE_RESOURCE_ABI = [
+    { type: "function", name: "createResource", stateMutability: "nonpayable", inputs: [{ name: "resource_id", type: "bytes32" }, { name: "price", type: "uint256" }, { name: "uri", type: "string" }], outputs: [] },
+];
+
+const readNamespaceHead = (owner) =>
+    publicClient.readContract({ address: DATA_REGISTRY, abi: DATA_REGISTRY_ABI, functionName: "getNamespaceHead", args: [owner] });
+// on-chain root hex = the commit CID's multihash digest (SDK pushCommit).
+const rootHexFromCid = (cid) => `0x${Buffer.from(CID.parse(cid).multihash.digest).toString("hex")}`;
+// episode id → stable settlement resourceId (bytes32). Stable so republishes reuse it.
+const resourceIdFor = (epId) => keccak256(stringToBytes(`fttfflix:${epId}`));
+const packUri = (workerUrl, plaintextHash) => `${workerUrl}#${plaintextHash}`;
+
+// ── working catalog (publisher portal state, includes unpublished episodes) ──
+const emptyCatalog = { series: [] };
+const readCatalog = () => {
+    try { return JSON.parse(readFileSync(CATALOG_FILE, "utf-8")); }
+    catch { return structuredClone(emptyCatalog); }
+};
+const writeCatalog = (cat) => {
+    if (!existsSync(MEDIA_DIR)) mkdirSync(MEDIA_DIR, { recursive: true });
+    writeFileSync(CATALOG_FILE, JSON.stringify(cat, null, 2));
+};
+// walk every episode with its parents, so we can find the one an id names.
+function* eachEpisode(cat) {
+    for (const s of cat.series ?? [])
+        for (const se of s.seasons ?? [])
+            for (const ep of se.episodes ?? []) yield { series: s, season: se, ep };
+}
+const findEpisode = (cat, epId) => [...eachEpisode(cat)].find((x) => x.ep.id === epId);
+
+// ─── HTTP plumbing ────────────────────────────────────────────────────────────
+class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
+const bigintReplacer = (_k, v) => (typeof v === "bigint" ? v.toString() : v);
+const sendJson = (res, status, body) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body, bigintReplacer));
+};
+const readJson = (req) => new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (c) => (data += c));
+    req.on("end", () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); } });
+    req.on("error", reject);
+});
+// stream a raw request body straight to a file (mp4 upload).
+const saveStream = (req, file) => new Promise((resolve, reject) => {
+    const out = createWriteStream(file);
+    req.pipe(out);
+    out.on("finish", resolve);
+    out.on("error", reject);
+    req.on("error", reject);
+});
+
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".ico": "image/x-icon", ".png": "image/png", ".svg": "image/svg+xml" };
+function serveStatic(res, pathname) {
+    if (!existsSync(DIST)) return sendJson(res, 404, { error: "no dist/ — run `vite build` (dev uses the vite server)" });
+    const rel = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
+    let file = join(DIST, rel);
+    if (!file.startsWith(DIST) || !existsSync(file) || pathname === "/") file = join(DIST, "index.html");
+    res.writeHead(200, { "Content-Type": MIME[extname(file)] ?? "application/octet-stream" });
+    res.end(readFileSync(file));
+}
+
+// ─── routes ───────────────────────────────────────────────────────────────────
+const routes = {
+    // Publisher portal state (full working catalog, unpublished included).
+    "GET /api/catalog": async () => ({ catalog: readCatalog(), defaultPrice: DEFAULT_PRICE }),
+
+    // Overwrite the working catalog (series/season/episode metadata edits).
+    "POST /api/catalog": async ({ body }) => {
+        if (!body?.catalog || !Array.isArray(body.catalog.series)) throw new HttpError(400, "body.catalog.series required");
+        writeCatalog(body.catalog);
+        return { ok: true };
+    },
+
+    // The published library, read back FROM the on-chain graph, for the viewer.
+    // owner = the publisher wallet whose namespace to read.
+    "GET /api/remote": async ({ query }) => {
+        const owner = String(query.get("owner") ?? "").toLowerCase();
+        if (!/^0x[0-9a-f]{40}$/.test(owner)) throw new HttpError(400, "?owner=0x… required");
+        const head = await readNamespaceHead(owner);
+        if (!head || head === ZERO_BYTES32) return { catalog: { series: [] } };
+        const contents = await fangorn.engine.listNamespace(NAMESPACE, owner);
+        return { catalog: catalogFromGraph(contents) };
+    },
+
+    // Prepare a publish: encrypt+upload every NEW episode (has a file, no
+    // `published` pointer yet), build the graph commit, return unsigned txs.
+    // The browser signs createResource(price) per new episode + one commitStateRoot.
+    "POST /api/publish/prepare": async ({ body }) => {
+        const owner = String(body?.owner ?? "").toLowerCase();
+        if (!/^0x[0-9a-f]{40}$/.test(owner)) throw new HttpError(400, "body.owner required");
+        const cat = readCatalog();
+
+        // Encrypt + upload each new episode; collect the resulting pointers.
+        const creates = [];
+        const published = {}; // epId → { resourceId, plaintextHash, workerUrl }
+        for (const { ep } of eachEpisode(cat)) {
+            if (ep.published || !ep.file) continue;
+            const mp4 = join(MEDIA_DIR, ep.file);
+            if (!existsSync(mp4)) throw new HttpError(400, `episode ${ep.id}: file ${ep.file} not found — upload it first`);
+            const resourceId = resourceIdFor(ep.id);
+            const plaintext = new Uint8Array(readFileSync(mp4));
+            const { plaintextHash } = await encryptAndUpload({ plaintext, resourceId, workerUrl: WORKER_URL });
+            const price = BigInt(ep.price ?? DEFAULT_PRICE);
+            creates.push({
+                epId: ep.id,
+                to: SETTLEMENT_REGISTRY_ADDR,
+                data: encodeFunctionData({ abi: CREATE_RESOURCE_ABI, functionName: "createResource", args: [resourceId, price, packUri(WORKER_URL, plaintextHash)] }),
+            });
+            published[ep.id] = { resourceId, plaintextHash, workerUrl: WORKER_URL };
+        }
+
+        // Build the graph over the merged (existing + about-to-publish) catalog.
+        const merged = structuredClone(cat);
+        for (const { ep } of eachEpisode(merged)) {
+            if (published[ep.id]) ep.published = published[ep.id];
+        }
+        const { vertices, edges } = buildFlixGraph(merged);
+        if (vertices.length === 0) throw new HttpError(400, "nothing to publish — add a published episode first");
+
+        const oldRoot = await readNamespaceHead(owner);
+        const parent = oldRoot === ZERO_BYTES32 ? undefined : fangorn.engine.commitCidFromRootHex(oldRoot);
+        const commit = await fangorn.commit({ namespace: NAMESPACE, vertices, edges, parent, message: "publish library", replace: true });
+
+        const commitTx = {
+            to: DATA_REGISTRY,
+            data: encodeFunctionData({ abi: DATA_REGISTRY_ABI, functionName: "commitStateRoot", args: [oldRoot, rootHexFromCid(commit.commitCid)] }),
+        };
+        return { commitCid: commit.commitCid, creates, commitTx, published, staged: { vertices: vertices.length, edges: edges.length } };
+    },
+
+    // After the browser confirms all txs, mark those episodes published on disk.
+    "POST /api/settle": async ({ body }) => {
+        const published = body?.published ?? {};
+        const cat = readCatalog();
+        for (const { ep } of eachEpisode(cat)) {
+            if (published[ep.id]) ep.published = published[ep.id];
+        }
+        writeCatalog(cat);
+        return { ok: true };
+    },
+};
+
+const server = createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    try {
+        // mp4 upload: POST /api/upload/:epId (raw octet-stream body)
+        const up = url.pathname.match(/^\/api\/upload\/([\w.-]+)$/);
+        if (req.method === "POST" && up) {
+            const cat = readCatalog();
+            const hit = findEpisode(cat, up[1]);
+            if (!hit) return sendJson(res, 404, { error: `no episode ${up[1]} — create it in the catalog first` });
+            if (!existsSync(MEDIA_DIR)) mkdirSync(MEDIA_DIR, { recursive: true });
+            const file = `${up[1]}.mp4`;
+            await saveStream(req, join(MEDIA_DIR, file));
+            hit.ep.file = file;
+            hit.ep.published = undefined; // new bytes → must re-publish
+            writeCatalog(cat);
+            return sendJson(res, 200, { ok: true, file });
+        }
+
+        if (req.method === "GET" && !url.pathname.startsWith("/api/")) return serveStatic(res, url.pathname);
+
+        const handler = routes[`${req.method} ${url.pathname}`];
+        if (!handler) return sendJson(res, 404, { error: `no route: ${req.method} ${url.pathname}` });
+
+        const params = { query: url.searchParams };
+        if (req.method === "POST" || req.method === "PUT") params.body = await readJson(req);
+        sendJson(res, 200, await handler(params));
+    } catch (err) {
+        const status = err instanceof HttpError ? err.status : 500;
+        if (status === 500) console.error(err);
+        sendJson(res, status, { error: err.message });
+    }
+});
+
+server.listen(PORT, () => console.log(`fttf-flix server on http://localhost:${PORT}  (namespace ${NAMESPACE})`));

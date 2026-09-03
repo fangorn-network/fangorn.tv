@@ -1,0 +1,15 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+// The SDK needs Node (fs, LMDB, service key), so graph build/commit + catalog
+// reads live in server/. The browser signs txs and runs the buyer flow itself
+// (viem + Semaphore), talking to the facilitator/worker directly. /api is the
+// only thing proxied to the local server.
+export default defineConfig({
+    plugins: [react()],
+    server: {
+        proxy: {
+            "/api": { target: "http://localhost:8787", changeOrigin: true },
+        },
+    },
+});

@@ -1,0 +1,76 @@
+# fttf-flix
+
+Pay-once-watch-forever encrypted video ("web3 netflix"), published to the
+[Fangorn](https://github.com/fangorn-network) network and settled with the
+[x402f](../x402f) payment rails. A publisher uploads MP4s, organizes them into
+**series → seasons → episodes**, and publishes that structure as a Fangorn
+commit graph. Each episode's video is AES-encrypted and stored on the access
+worker; buying it pays the publisher once (USDC on Arbitrum Sepolia) and unlocks
+decryption forever — with no on-chain link between the buyer's identity and the
+resource.
+
+```
+┌───────────────── your machine ─────────────────┐
+│  media/*.mp4 + catalog.json     server/         │
+│  (working library)  ◄── /api ──► local relay    │
+│                                    │  (Fangorn SDK: graph build + commit,
+│  src/ (Vite React)  ◄── /api ──►   │   IPFS pin — NO signing key)
+│   Publisher portal + Viewer        │
+└──────────┬─────────────────────────┴────────────┘
+   browser wallet signs        facilitator + access worker
+   (createResource, commit,    (register / settle / gated decrypt)
+    payment, settlement)                │
+              └────────► Arbitrum Sepolia (SettlementRegistry, DataRegistry)
+```
+
+The server holds **no wallet key** — its `ETH_PRIVATE_KEY` is a service key used
+only to construct the Fangorn engine and pin to IPFS. Every on-chain action is
+signed by the browser wallet (publisher: `createResource` + `commitStateRoot`;
+buyer: EIP-3009 payment + Semaphore settlement).
+
+## How it maps to the primitives
+
+| Piece | Where | Job |
+|---|---|---|
+| Library structure | `server/graph.js` | catalog ⇄ Fangorn vertices+edges (series/season/episode) |
+| Encrypt + upload | `server/settle.js` | AES-256-GCM each mp4, seal DEK to worker, upload ciphertext |
+| Publish flow | `server/index.js` `/api/publish/prepare` + `/api/settle` | encrypt new episodes, `fangorn.commit`, hand browser unsigned txs |
+| Buyer flow | `src/buy.js` + `src/purchase.js` | derive stealth identity, pay owner, prove membership, decrypt |
+| UI | `src/App.jsx` | Publisher portal + Viewer/player |
+
+Each episode = one settlement `resourceId` (`keccak256("fttfflix:"+id)`),
+referenced from its graph vertex. Buying is `register` (facilitator `/verify`,
+pays the owner + joins a Semaphore group) → `settle` (facilitator `/settle`,
+membership proof) → worker `/access` releases the DEK for the buyer's stealth
+address. Re-watching is settlement-gated by that stealth address, so it never
+pays twice.
+
+## Setup
+
+```sh
+pnpm install
+cp .env.example .env    # fill in ETH_PRIVATE_KEY (service key) + PINATA_JWT/GATEWAY
+pnpm dev                # server :8787 + vite :5173
+```
+
+You also need a running **x402f facilitator** (`FACILITATOR_URL`) and the access
+**worker** (`WORKER_URL`) — see `../x402f/packages/facilitator`. The defaults in
+`.env.example` point at the deployed worker and a local facilitator.
+
+## End-to-end
+
+1. **Publish** (Publisher tab): connect wallet → `+ Series`, `+ Season`,
+   `+ Episode` → attach an mp4 and set a price (USDC base units, 6 decimals) →
+   **Publish to Fangorn**. Your wallet signs one `createResource` per new episode
+   plus one `commitStateRoot`.
+2. **Watch** (Watch tab): connect a *second* wallet holding testnet USDC → paste
+   the publisher address → **Load** → click an episode. First click pays and
+   settles; the decrypted mp4 plays in-page. Re-open → no second payment.
+
+## Known simplifications (ponytail)
+
+- Whole-file encrypt/decrypt in memory → blob-URL playback. No range/streaming
+  decryption — fine for demo-sized clips; add chunked streaming for large files.
+- Injected wallet (MetaMask) only. Swap in Privy for embedded/email wallets.
+- Single publisher per server instance; no auth beyond "only the owner's wallet
+  can sign the publish tx".

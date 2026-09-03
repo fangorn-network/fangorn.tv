@@ -1,0 +1,21 @@
+// Thin client for the local server (publisher-side catalog + publish). Buyer
+// flow does NOT go through here — it talks to the facilitator/worker directly
+// (src/purchase.js).
+
+async function j(res) {
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+    return res.json();
+}
+
+export const api = {
+    getCatalog: () => fetch("/api/catalog").then(j),
+    saveCatalog: (catalog) =>
+        fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ catalog }) }).then(j),
+    uploadMp4: (epId, file) =>
+        fetch(`/api/upload/${epId}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file }).then(j),
+    preparePublish: (owner) =>
+        fetch("/api/publish/prepare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner }) }).then(j),
+    settlePublish: (published) =>
+        fetch("/api/settle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ published }) }).then(j),
+    getRemote: (owner) => fetch(`/api/remote?owner=${owner}`).then(j),
+};

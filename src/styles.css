@@ -1,0 +1,1548 @@
+/* SOND3R — glass, kept honest.
+ *
+ * Palette is fangorn.network's: a near-black neutral ramp plus ONE accent
+ * (violet). The accent is a pointer, not a decoration — it marks the thing the
+ * page has decided is next, and appears nowhere else. Status hues stay muted and
+ * stay small (dots and badges), so nothing competes with it.
+ *
+ * Glass rules followed here:
+ *   · blur stays 8–14px. Above that it turns to fog and costs GPU.
+ *   · every glass surface carries a semi-opaque tint UNDER its text, so contrast
+ *     never depends on whatever is behind it.
+ *   · borders are soft, never pure white — pure white rims glare on dark.
+ *   · glass is used on a handful of surfaces (panes, chrome, overlays), not on
+ *     every element, and blurred layers are never stacked.
+ *   · @supports fallback at the bottom for browsers without backdrop-filter.
+ *
+ * Motion rules: one easing curve, one duration scale, everything behind
+ * prefers-reduced-motion at the bottom. The storefront rearranges itself between
+ * visits (see browse.js) — animation is how that reads as the page thinking
+ * rather than the page glitching.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Geist:wght@300;400;500;600&display=swap');
+
+:root {
+    --bg:#08080a;
+    --s1:#0d0d10;
+    --s2:#121215;
+    --fg:#dddbe8;
+    --dim:#6b6880;
+    --dimmer:#3a3848;
+
+    /* the one accent */
+    --hi:#a78bfa;
+    --hi2:#7c5de8;
+    --hi-wash:#a78bfa14;
+
+    /* glass */
+    --glass:#ffffff06;
+    --glass-hi:#ffffff0f;
+    --glass-solid:#0d0d10e6;   /* the tint that guarantees text contrast */
+    --line:#1e1e24;
+    --line-hi:#28282f;
+    --sunk:#00000047;
+
+    /* status — muted on purpose; these are dots and badges, not brand colours */
+    --ok:#22c55e;
+    --warn:#f97316;
+    --bad:#f472b6;
+
+    --shadow:0 16px 40px #00000080;
+    --mono:'Fragment Mono', ui-monospace, "SF Mono", Menlo, monospace;
+    --sans:'Geist', ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    --ease:cubic-bezier(.2, .7, .2, 1);
+    /* Ionic's drawer curve. A panel sliding a whole screen-width needs a longer
+       tail than a hover does, or it arrives and stops dead. */
+    --ease-drawer:cubic-bezier(.32, .72, 0, 1);
+    --r:14px;
+    /* The shell's gutter, as a value rather than a number, because the watch
+       page has to break out of it and then reproduce it exactly. */
+    --pad:24px;
+}
+
+* { box-sizing:border-box; }
+
+body {
+    margin:0; color:var(--fg); background:var(--bg);
+    font:400 15px/1.55 var(--sans);
+    -webkit-font-smoothing:antialiased;
+}
+
+/* Glass needs something behind it or it collapses into a grey box. Three very
+ * soft, very slow washes — enough variation to read as depth, calm enough that
+ * nothing behind the panes competes with their text. */
+body::before {
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+        radial-gradient(46vw 46vw at 12% -8%, #a78bfa10, transparent 70%),
+        radial-gradient(40vw 40vw at 92% 6%, #7c5de80d, transparent 70%),
+        radial-gradient(50vw 40vw at 50% 108%, #22c55e08, transparent 72%);
+}
+
+/* ── controls ─────────────────────────────────────────────────────────────── */
+button {
+    font:inherit; font-weight:500; cursor:pointer; color:var(--fg);
+    border:1px solid var(--line); background:var(--glass);
+    border-radius:9px; padding:.45em .9em;
+    transition:background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease),
+        opacity .15s, scale .16s var(--ease);
+}
+button:hover:not(:disabled) { background:var(--glass-hi); border-color:var(--line-hi); }
+/* Press feedback, everywhere, from one rule. `scale` and not `transform`: half a
+   dozen buttons here are POSITIONED by transform (the play badge, the folder
+   corners, the ruler marks) and a transform on :active would drop their
+   translate and fling them across the screen. `scale` is its own property and
+   composes with whatever transform is already there. */
+button:active:not(:disabled) { scale:.97; }
+button:disabled { opacity:.4; cursor:default; }
+button:focus-visible, input:focus-visible, a:focus-visible, label.file:focus-within {
+    outline:1px solid var(--hi); outline-offset:2px;
+}
+
+button.primary {
+    background:var(--hi); border-color:var(--hi); color:#12091f; font-weight:600;
+}
+button.primary:hover:not(:disabled) { background:#bda4ff; border-color:#bda4ff; }
+button.ghost { background:transparent; border-color:transparent; color:var(--dim); }
+button.ghost:hover:not(:disabled) { color:var(--fg); background:var(--glass); }
+button.on { background:var(--glass-hi); border-color:var(--line-hi); color:#fff; }
+
+input, textarea {
+    font:inherit; color:var(--fg); background:var(--sunk); border:1px solid var(--line);
+    border-radius:9px; padding:.5em .75em; outline:none;
+    transition:border-color .15s var(--ease), background .15s var(--ease);
+}
+/* Storage setup — a modal, because it is a task with a beginning and an end, not
+   a panel to glance at. Native <dialog>, so Escape, focus trapping and the
+   backdrop are the platform's job rather than ours. */
+.storage-modal {
+    width:min(30rem, 92vw); padding:1.1rem 1.25rem 1.25rem; border-radius:var(--r);
+    color:var(--fg); background:var(--glass-solid); border:1px solid var(--line-hi);
+    box-shadow:var(--shadow);
+}
+.storage-modal::backdrop { background:#000000a8; backdrop-filter:blur(3px); }
+.storage-modal header {
+    display:flex; align-items:center; gap:.5rem; position:static; padding:0 0 .7rem;
+    background:none; backdrop-filter:none; border-bottom:1px solid var(--line);
+    margin-bottom:.85rem;
+}
+.storage-modal header b { letter-spacing:.14em; text-transform:uppercase; font-size:12px; color:var(--dim); }
+.storage-modal header button { margin-left:auto; padding:.15em .5em; }
+/* One column, so every body reads as a sequence of steps. */
+.storage-modal > :not(header) { display:block; width:100%; margin:0 0 .55rem; }
+.storage-modal h3 { margin:0 0 .5rem; font-size:15px; font-weight:600; }
+.storage-modal p { margin:0 0 .7rem; font-size:.9em; line-height:1.5; }
+.storage-modal p.dim, .storage-modal .dim { color:var(--dim); }
+.storage-modal p.warn, .storage-modal .warn { color:#ffb4a8; }
+.storage-modal code { font-family:var(--mono); font-size:.85em; word-break:break-all; }
+.storage-modal input { width:100%; }
+.storage-modal a { color:var(--hi); font-size:.9em; text-decoration:none; }
+.storage-modal a:hover { text-decoration:underline; }
+.storage-modal a.cta {
+    display:block; text-align:center; padding:.55em 1em; border-radius:9px;
+    background:var(--hi); color:#12091f; font-weight:600; text-decoration:none;
+}
+.storage-modal hr { border:0; border-top:1px solid var(--line); margin:.9rem 0; }
+.storage-modal .row { display:flex; align-items:center; gap:.5rem; font-size:.9em; margin-bottom:.35rem; }
+.storage-modal .row > span:first-child { color:var(--dim); }
+.storage-modal .row > b { margin-left:auto; font-weight:600; }
+.storage-modal .row.buy input { width:7ch; }
+.storage-modal .bar { height:4px; border-radius:2px; background:#ffffff14; overflow:hidden; }
+.storage-modal .bar i { display:block; height:100%; background:var(--hi2); }
+/* Receipts are reference, not the point of the modal. */
+.storage-modal .receipt { color:var(--dim); font-size:.82em; }
+.storage-modal .receipt > b { color:inherit; font-weight:500; }
+/* A blocking condition explained inline, above the workbench — not a toast, since
+   it stays true until the publisher goes and fixes it elsewhere. */
+.notice {
+    margin:0 0 16px; padding:.7rem .9rem; border-radius:10px; font-size:.9em;
+    color:var(--fg); background:var(--hi-wash); border:1px solid var(--line-hi);
+}
+.notice a { color:var(--hi); }
+.notice.warn { background:#f9731614; border-color:#f9731638; }
+.notice button { padding:.1em .6em; font-size:.9em; }
+
+/* Connected is the quiet state — it's a status, not an action. */
+button.storage.own { color:var(--dim); }
+
+input::placeholder, textarea::placeholder { color:var(--dimmer); }
+input:focus, textarea:focus { border-color:var(--hi2); background:#00000059; }
+
+/* ── shell ────────────────────────────────────────────────────────────────── */
+.app { max-width:1240px; margin:0 auto; padding:0 var(--pad) 96px; }
+.wordmark { all:unset; cursor:pointer; }
+.wordmark:hover { color:var(--hi); }
+/* Inside a publisher's iframe: no page-sized bottom gutter, and the header
+   collapses to the wallet controls (the h1 and nav are dropped in App). */
+.app.embed { padding:0 14px 18px; }
+.app.embed header { position:static; padding:9px 0; background:none; backdrop-filter:none; }
+.app.embed header nav { display:none; } /* empty in embed mode — don't draw its border */
+
+header {
+    display:flex; align-items:center; gap:18px; padding:15px 0;
+    position:sticky; top:0; z-index:20;
+    background:#08080acc; backdrop-filter:blur(14px) saturate(1.3);
+    border-bottom:1px solid var(--line);
+}
+header h1 {
+    margin:0; font-size:17px; font-weight:600; letter-spacing:.34em;
+    text-transform:uppercase; color:var(--fg);
+}
+header nav {
+    display:flex; gap:2px; padding:3px; border:1px solid var(--line);
+    border-radius:10px; background:var(--sunk);
+}
+header nav button {
+    border:none; background:none; font-size:13px; font-weight:500;
+    color:var(--dim); padding:.4em 1em;
+}
+header nav button.on { background:var(--glass-hi); color:var(--fg); }
+.spacer { flex:1; }
+
+.addr {
+    font-family:var(--mono); font-size:12px; color:var(--dim);
+    border:1px solid var(--line); background:var(--glass); border-radius:20px; padding:.4em .85em;
+}
+.addr::before {
+    content:""; display:inline-block; width:5px; height:5px; border-radius:50%;
+    background:var(--ok); margin-right:8px; vertical-align:middle;
+}
+
+.err {
+    background:#f472b614; border:1px solid #f472b63d; color:#f9c0da;
+    padding:.7em 1em; border-radius:10px; margin-top:16px; cursor:pointer; font-size:14px;
+}
+
+/* ── toolbar ──────────────────────────────────────────────────────────────── */
+.toolbar { display:flex; align-items:center; gap:9px; margin:22px 0 16px; flex-wrap:wrap; }
+.status { color:var(--hi); font-size:13px; font-family:var(--mono); }
+.empty { color:var(--dim); font-size:14px; }
+.lede { color:var(--dim); font-size:13px; margin:-4px 0 14px; }
+.lhead { font-size:13px; font-weight:600; letter-spacing:.02em; margin:22px 0 6px; }
+.lhead:first-of-type { margin-top:8px; }
+.empty.pad { padding:22px; margin:0; }
+.empty code { font-family:var(--mono); font-size:12px; }
+
+.earnings {
+    margin-left:auto; font-size:12.5px; color:var(--dim); font-family:var(--mono);
+}
+.earnings b { color:var(--fg); font-weight:600; }
+
+/* ── publisher workbench: tree + inspector ────────────────────────────────── */
+.workbench {
+    display:grid; grid-template-columns:minmax(0, 1fr) 330px; gap:16px; align-items:start;
+}
+
+/* The two glass surfaces of the app. Tint first, blur second — the tint is what
+ * makes the text legible regardless of the wash behind it. */
+.pane {
+    background:var(--glass-solid); backdrop-filter:blur(12px) saturate(1.2);
+    border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow);
+}
+/* min-height leaves dead space under a short tree: that space is the deselect
+   target (and the root drop target), so it has to exist even with two files. */
+.pane.files { padding:8px; min-height:180px; max-height:66vh; overflow-y:auto; overscroll-behavior:contain; }
+.inspector { position:sticky; top:76px; padding:18px; }
+.inspector.blank { display:grid; align-content:center; justify-items:center; gap:14px; min-height:200px; text-align:center; }
+.inspector.blank .empty { max-width:22ch; }
+/* The storefront share sits here rather than in the toolbar, so it needs the
+   full column width the centered empty-state doesn't want. */
+.inspector.blank .share { width:100%; margin:0; text-align:left; }
+
+/* ── tree (publisher only — the storefront stopped drawing one) ───────────── */
+.tree { list-style:none; margin:0; padding:0; }
+.tree .tree { margin-left:10px; padding-left:11px; border-left:1px solid var(--line); }
+.node { margin:0; }
+
+.node .row {
+    display:flex; align-items:center; gap:9px; padding:6px 9px; border-radius:8px;
+    cursor:pointer; user-select:none;
+    border:1px solid transparent; transition:background .12s var(--ease);
+}
+.node .row:hover { background:var(--glass); }
+.node .row.on { background:var(--hi-wash); border-color:#a78bfa38; }
+/* drag destination — the folder you'd drop into, and the root pane */
+.node .row.over { background:var(--glass-hi); border-color:var(--hi); }
+.pane.files.over { border-color:var(--hi); }
+.node[draggable="true"]:active { cursor:grabbing; }
+
+.twist {
+    background:none; border:none; color:var(--dimmer); padding:0; width:16px;
+    flex:0 0 16px; font-size:10px; line-height:1;
+}
+.twist:hover:not(:disabled) { color:var(--fg); background:none; }
+.ficon { flex:0 0 auto; font-size:13px; opacity:.75; }
+.fname, .vname {
+    flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-size:13.5px;
+}
+.fname { font-weight:600; }
+.count { flex:0 0 auto; font-size:11px; color:var(--dimmer); font-family:var(--mono); }
+
+/* status as a 6px dot: the only per-row metadata that survives */
+.dot { flex:0 0 6px; width:6px; height:6px; border-radius:50%; }
+.dot.pub { background:var(--ok); }
+.dot.ready { background:var(--warn); opacity:.7; }
+
+/* ── inspector internals ──────────────────────────────────────────────────── */
+.ihead { display:flex; gap:12px; align-items:flex-start; margin-bottom:16px; }
+.iglyph { font-size:26px; line-height:1; opacity:.85; }
+.ititle { min-width:0; }
+.ititle b {
+    display:block; font-size:15px; font-weight:600; line-height:1.3;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ipath {
+    display:block; font-family:var(--mono); font-size:11px; color:var(--dimmer);
+    margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+.istatus { display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.badge {
+    font-size:10px; font-weight:600; font-family:var(--mono);
+    text-transform:uppercase; letter-spacing:.09em;
+    border-radius:5px; padding:.4em .65em; border:1px solid;
+}
+.badge.pub { background:#22c55e14; border-color:#22c55e40; color:var(--ok); }
+.badge.ready { background:#f9731614; border-color:#f9731640; color:var(--warn); }
+.sold { font-size:12px; font-family:var(--mono); color:var(--dim); }
+
+.ifield { display:block; margin-bottom:16px; }
+.ifield > span {
+    display:block; font-size:11px; text-transform:uppercase; letter-spacing:.09em;
+    color:var(--dimmer); margin-bottom:6px;
+}
+.ifield > span em { font-style:normal; text-transform:none; letter-spacing:0; opacity:.7; }
+.ifield .price { width:100%; font-family:var(--mono); font-size:13px; }
+.ifield .desc { width:100%; font:inherit; font-size:13px; resize:vertical; min-height:58px; line-height:1.45; }
+
+.facts {
+    display:grid; grid-template-columns:auto 1fr; gap:7px 14px;
+    margin:0 0 16px; padding:12px 0; border-block:1px solid var(--line);
+    font-size:12.5px;
+}
+.facts dt { color:var(--dimmer); }
+.facts dd {
+    margin:0; font-family:var(--mono); color:var(--dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* The share link: truncated hex + a copy button. The full 90-character URL is
+ * never displayed — nobody reads a resourceId, they copy it. */
+.share .sharerow { display:flex; align-items:center; gap:6px; }
+.share code {
+    flex:1; min-width:0; font-family:var(--mono); font-size:11.5px; color:var(--dim);
+    background:var(--sunk); border:1px solid var(--line); border-radius:8px;
+    padding:.45em .6em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+.iacts { display:flex; flex-wrap:wrap; gap:6px; margin-top:18px; }
+.mini {
+    font-size:12px; padding:.4em .7em; color:var(--dim); border-radius:7px;
+}
+.mini:hover:not(:disabled) { color:var(--fg); }
+.mini.danger:hover:not(:disabled) { border-color:#f472b659; color:#f9c0da; }
+a.mini { text-decoration:none; display:inline-block; }
+
+.file {
+    font-size:13px; color:var(--dim); border:1px solid var(--line); background:var(--glass);
+    border-radius:9px; padding:.5em .9em; cursor:pointer; white-space:nowrap;
+    transition:background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+}
+.file:hover { color:var(--fg); background:var(--glass-hi); border-color:var(--line-hi); }
+.file.mini { font-size:12px; padding:.4em .7em; }
+
+/* ══ storefront ═══════════════════════════════════════════════════════════════
+ * Search first, context second, catalog last — in that order down the page,
+ * because that's the order of "I know what I want" → "show me around".
+ */
+
+/* ── search: the one input, at the top, always ────────────────────────────── */
+.searchbar {
+    display:flex; gap:8px; align-items:center;
+    margin:26px 0 18px;
+}
+.searchbar input {
+    flex:1; min-width:0; font-size:16px; padding:.75em 1em;
+    border-radius:12px; background:var(--s1); border-color:var(--line-hi);
+}
+.searchbar input:focus { box-shadow:0 0 0 3px #a78bfa1f; }
+.searchbar .primary { padding:.75em 1.4em; border-radius:12px; }
+
+/* Results run to the bottom of the screen and scroll inside themselves, so the
+   app bar and the search box stay put. The page is sized off its own content
+   everywhere else, so the full-height column only switches on when hits exist —
+   :has() reads that straight off the DOM, no state plumbed down for layout.
+   100dvh, not vh: a mobile URL bar would otherwise hide the last row. */
+.app:has(.results) { display:flex; flex-direction:column; height:100dvh; padding-bottom:20px; }
+.viewer:has(> .results), .results { display:flex; flex-direction:column; flex:1; min-height:0; }
+/* The one row above the list: how many, and the button that turns them into a
+   run. A query is a channel — this is the play head for it. */
+.hitbar { display:flex; align-items:center; gap:12px; margin-bottom:9px; }
+.hitbar .uplabel {
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--dimmer);
+}
+
+/* Results are a wall of covers, not a list of lines: search returns subtitle
+   cues, and the thing being looked for is the FILE. Same tile as everywhere else
+   so a result and a shelf item are recognisably the same object — the only
+   additions are the match badge and the row of moments. */
+.hitgrid {
+    display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));
+    align-content:start; overflow-y:auto; overscroll-behavior:contain;
+    flex:1; min-height:0; padding:2px 2px 20px;
+}
+.hitcard .card { position:relative; height:100%; }
+
+/* Over the corner of the cover, not in the metadata line: it explains the card's
+   POSITION, so it belongs on the picture that position is sorting. */
+.hitcard .hitscore {
+    position:absolute; top:8px; right:8px; z-index:1;
+    padding:2px 6px; border-radius:6px;
+    font-family:var(--mono); font-size:10px; line-height:1.5;
+    color:var(--dim); background:#000000a8; backdrop-filter:blur(3px);
+}
+/* The line that matched. Two lines is enough to recognise a scene; more turns
+   the grid into ragged columns. */
+.hitquote {
+    padding:4px 13px 0; color:var(--dim); font-size:12px; line-height:1.45;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.hitcard .card-meta { margin-top:auto; }
+
+/* Every other place the phrase lands. Outside the card because a button inside a
+   button is invalid HTML — the same reason the rating pair sits in .cardwrap. */
+.moments { display:flex; flex-wrap:wrap; gap:4px; padding:7px 2px 0; }
+.moment {
+    padding:2px 7px; border-radius:6px; font-family:var(--mono); font-size:10.5px;
+    color:var(--dim); background:var(--sunk); border:1px solid var(--line);
+}
+.moment:hover:not(:disabled) { color:#fff; border-color:var(--line-hi); }
+.moment.more { color:var(--dimmer); background:none; border-color:transparent; }
+
+@media (max-width:560px) { .hitgrid { grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; } }
+
+/* ── context rail: who you're browsing ────────────────────────────────────── */
+/* An index, not a pill rack. Every group is a question the page can answer —
+   the label names the question, the words are the answers, and the accent
+   underline marks the one in force. Nothing here has a capsule around it, so
+   the eye lands on the labels and reads the row as three columns. */
+.filters {
+    display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 20px;
+    border-bottom:1px solid var(--line); padding-bottom:9px; margin-bottom:26px;
+}
+.fgroup { display:flex; align-items:baseline; gap:11px; }
+.fgroup + .fgroup { border-left:1px solid var(--line); padding-left:20px; }
+.flabel {
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--dimmer);
+}
+.fpick {
+    border:none; background:none; border-radius:0; padding:1px 0 3px;
+    font-size:13px; font-weight:400; color:var(--dim);
+    box-shadow:inset 0 -1px 0 transparent;
+    transition:color .15s var(--ease), box-shadow .15s var(--ease);
+}
+.fpick:hover:not(:disabled) { background:none; color:var(--fg); box-shadow:inset 0 -1px 0 var(--line-hi); }
+.fpick.on { color:var(--hi); box-shadow:inset 0 -1px 0 var(--hi); }
+.fpick sup { font-family:var(--mono); font-size:9px; color:var(--dimmer); margin-left:.3em; }
+.fpick.on sup { color:#a78bfa9c; }
+.fpick.more { color:var(--dimmer); letter-spacing:.1em; }
+
+/* The menu. Where you are, not what you're filtering — so it sits at the end of
+   the row, away from the groups, and looks like a control rather than an answer.
+   <details> does the opening; everything here is paint. */
+.menu { position:relative; }
+.menu > summary {
+    list-style:none; cursor:pointer; padding:1px 6px 3px; color:var(--dim);
+    font-size:15px; line-height:1; border-radius:6px;
+    transition:color .15s var(--ease), background .15s var(--ease);
+}
+.menu > summary::-webkit-details-marker { display:none; }
+.menu > summary:hover, .menu[open] > summary { color:var(--fg); background:var(--glass-hi); }
+.menu-pop {
+    position:absolute; right:0; top:calc(100% + 8px); z-index:40;
+    display:flex; flex-direction:column; min-width:168px; padding:5px;
+    background:var(--bg-hi, #16161c); border:1px solid var(--line);
+    border-radius:10px; box-shadow:0 12px 34px rgba(0,0,0,.45);
+    /* From the ☰ it belongs to, not from its own middle. Whether anyone notices
+       this one is not the point — in aggregate these become visible. */
+    transform-origin:top right;
+    animation:pop .16s var(--ease);
+}
+.menu-go {
+    border:none; background:none; border-radius:6px; text-align:left;
+    padding:7px 10px; font-size:13px; color:var(--dim);
+    transition:color .15s var(--ease), background .15s var(--ease);
+}
+.menu-go:hover { background:var(--glass-hi); color:var(--fg); }
+.menu-go.on { color:var(--hi); }
+.adv {
+    flex:0 0 100%; display:flex; gap:7px; align-items:center; margin-top:4px;
+    animation:fade .2s var(--ease);
+}
+.adv .owner { flex:1; max-width:440px; font-family:var(--mono); font-size:12.5px; }
+
+/* ── shelves: the generated front page ────────────────────────────────────── */
+.shelf { margin-bottom:34px; animation:rise .34s var(--ease) both; }
+/* Shelf order is decided at render time, so the reveal is staggered by DOM
+   position rather than by an index prop — the layout tells the animation. */
+.shelf:nth-of-type(2) { animation-delay:.05s; }
+.shelf:nth-of-type(3) { animation-delay:.1s; }
+.shelf:nth-of-type(n+4) { animation-delay:.14s; }
+
+.shelf-head { display:flex; align-items:baseline; gap:12px; margin-bottom:12px; }
+.shelf-head h2 { margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em; }
+/* The page rearranges itself between visits. This is the sentence that keeps
+   that from feeling arbitrary — never ship the reordering without the reason. */
+.shelf-head .why {
+    font-size:11px; font-family:var(--mono); color:var(--dim);
+    border-left:1px solid var(--line-hi); padding-left:12px;
+}
+.shelf-head .more { margin-left:auto; font-size:12px; padding:.2em .5em; }
+
+/* Wraps, never scrolls sideways: everything a section holds is reachable by
+   reading down the page. Four is the ceiling — auto-fit fills the row on narrow
+   screens without ever exceeding it, so nothing is hidden off the right edge. */
+.rail {
+    display:grid; gap:12px;
+    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+}
+@media (min-width:900px) { .rail { grid-template-columns:repeat(4, 1fr); } }
+
+/* ── one folder at a time ─────────────────────────────────────────────────── */
+.level { animation:rise .28s var(--ease) both; }
+.crumbs { display:flex; align-items:center; gap:2px; flex-wrap:wrap; margin-bottom:16px; }
+.crumb {
+    border:none; background:none; padding:.25em .5em; font-size:13px; color:var(--dim);
+    border-radius:7px;
+}
+.crumb:disabled { color:var(--fg); opacity:1; font-weight:600; }
+.crumb:not(:disabled):hover { color:var(--hi); background:var(--glass); }
+.crumb + .crumb::before { content:"/"; color:var(--dimmer); margin-right:.6em; }
+.crumb-owner { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--dimmer); }
+
+/* The one back button, above whatever page is on screen. Sticky because the
+   pages under it are long — a way out that scrolls off the top isn't one. */
+.backbar {
+    position:sticky; top:0; z-index:5; display:flex; align-items:center;
+    margin:0 0 14px; padding:6px 0;
+    background:linear-gradient(var(--bg) 70%, transparent);
+}
+.crumb.back { padding-left:0; font-size:13px; }
+.crumb.back:hover { color:var(--hi); background:none; }
+
+/* ── shelves: a peek, and a way to the whole thing ────────────────────────── */
+.wbrowse .shelf + .shelf { margin-top:26px; }
+.shelfhead {
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+    margin:0 0 10px; font-size:15px; font-weight:600;
+}
+.shelfhead .wmeta { font-weight:400; }
+.shelfhead .shelfall { margin-left:auto; font-size:12px; white-space:nowrap; }
+/* Scrolls sideways instead of wrapping: a row that wraps is a page, and the
+   point of a row is that the next one is right below it. */
+.shelfrow {
+    display:flex; gap:14px; overflow-x:auto; scroll-snap-type:x proximity;
+    padding-bottom:6px; margin:0 -2px; scrollbar-width:thin;
+}
+/* `min-width:0` is not optional: a flex item's automatic minimum is its content's
+   min-content width, so a card with a 68-character filename ignored the 260px
+   basis and grew to fit the name. That is why the tiles came out different sizes.
+   Every cell is the same box; the name is clamped to two lines inside it, so the
+   rows are the same height too. */
+.shelfcell { flex:0 0 260px; min-width:0; scroll-snap-align:start; display:flex; }
+.shelfcell > * { width:100%; }
+.shelfcell .card { height:100%; }
+.shelfcell .card-name {
+    display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden; min-height:2.6em;
+}
+@media (max-width:600px) { .shelfcell { flex-basis:160px; } }
+/* The rows break out of the 62ch reading measure. The prose on this page wants a
+   column; the catalog wants the window. `.wiki` is centred, so 50% of it is the
+   middle of the viewport and the row can be hung off that. */
+/* Centred on the column it breaks out of, not on an arithmetic guess: a
+   percentage margin resolves against the CONTAINING block, so `50% - 47vw` was
+   measuring half of 62ch and threw the rows off to one side. `left:50%` +
+   `translateX(-50%)` centres on whatever the column's centre actually is. Capped
+   to the app's own measure so the rows never overflow its gutters. */
+.wiki .wbrowse {
+    width:min(1192px, calc(100vw - 48px));
+    position:relative; left:50%; transform:translateX(-50%);
+}
+.wiki .wbrowse > .wmeta { display:block; max-width:62ch; }
+.shelfwrap { position:relative; }
+/* Over the tiles, not beside them: the row is the full width of the window and a
+   gutter for arrows would take 100px off both ends of every row on the page. */
+.shelfnav {
+    position:absolute; top:0; bottom:14px; width:44px; z-index:2;
+    display:flex; align-items:center; justify-content:center;
+    border:none; padding:0; cursor:pointer; color:var(--fg);
+    font-size:26px; line-height:1; opacity:0; transition:opacity .18s var(--ease);
+}
+.shelfnav.prev { left:-2px; background:linear-gradient(90deg, var(--bg) 35%, transparent); justify-content:flex-start; }
+.shelfnav.next { right:-2px; background:linear-gradient(270deg, var(--bg) 35%, transparent); justify-content:flex-end; }
+.shelfwrap:hover .shelfnav, .shelfnav:focus-visible { opacity:1; }
+.shelfnav:hover { color:var(--hi); }
+/* Touch has a gesture already, and a hover-revealed control it cannot reveal is
+   just a thing covering the first tile. */
+@media (hover:none) { .shelfnav { display:none; } }
+@media (max-width:900px) { .wiki .wbrowse { width:auto; left:0; transform:none; } }
+
+/* The loading skeleton: the shape of what is coming, at the size it will be. */
+.skel {
+    display:block; border-radius:12px;
+    background:linear-gradient(100deg, var(--s1) 30%, var(--s2) 50%, var(--s1) 70%);
+    background-size:220% 100%; animation:skelshift 1.4s linear infinite;
+}
+.skel-head { width:12rem; height:.9rem; border-radius:4px; }
+.skel-card { aspect-ratio:16/9; }
+@keyframes skelshift { from { background-position:130% 0; } to { background-position:-30% 0; } }
+@media (prefers-reduced-motion:reduce) { .skel { animation:none; } }
+
+/* One button, every long list. */
+.loadmore {
+    display:block; width:100%; margin:16px 0 0; padding:10px;
+    border:1px dashed var(--line); border-radius:10px; background:none;
+    font-size:13px; color:var(--dim);
+}
+.loadmore:hover { color:var(--fg); border-color:var(--line-hi); background:var(--glass); }
+.loadmore .wmeta { margin-left:.5em; }
+/* A readout where a control would be — the aisle sorter's progress. */
+.fnote { font-family:var(--mono); font-size:11px; color:var(--dimmer); }
+
+/* Same four-wide grid as a shelf — a folder is a section you drilled into. */
+.grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); }
+@media (min-width:900px) { .grid { grid-template-columns:repeat(4, minmax(0, 1fr)); } }
+@media (min-width:900px) { .grid { grid-template-columns:repeat(4, 1fr); } }
+
+/* ── the card ─────────────────────────────────────────────────────────────── */
+.card {
+    display:flex; flex-direction:column; width:100%; text-align:left;
+    padding:0; overflow:hidden; border-radius:12px; border:1px solid var(--line);
+    background:var(--s1);
+    transition:transform .2s var(--ease), border-color .2s var(--ease), background .2s var(--ease);
+}
+.card-art {
+    position:relative; overflow:hidden;
+    display:grid; place-items:center; aspect-ratio:16/9; font-size:34px;
+    background:linear-gradient(165deg, #ffffff0a, #ffffff02);
+    border-bottom:1px solid var(--line); opacity:.7;
+    transition:opacity .2s var(--ease), background .2s var(--ease);
+}
+/* Generated cover: soft blobs seeded by the file's name, with the kind glyph
+   floating over them so the type still reads at a glance. */
+.card-art svg {
+    position:absolute; inset:0; width:100%; height:100%;
+    filter:blur(9px) saturate(1.1); transform:scale(1.35);
+}
+.art-glyph { position:relative; filter:drop-shadow(0 2px 6px #000a); }
+/* A hint of what kind of thing it is, before the icon is even read. */
+.card[data-kind="audio"] .card-art { background:linear-gradient(165deg, #a78bfa1a, #ffffff02); }
+.card[data-kind="image"] .card-art { background:linear-gradient(165deg, #22c55e14, #ffffff02); }
+.card[data-kind="video"] .card-art { background:linear-gradient(165deg, #60a5fa14, #ffffff02); }
+
+.card-name {
+    padding:11px 13px 0; font-weight:500; font-size:13.5px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.card-meta {
+    padding:5px 13px 12px; color:var(--dim); font-size:12px; font-family:var(--mono);
+    display:flex; gap:8px;
+}
+.card-meta em { font-style:normal; color:var(--dimmer); }
+.card:hover:not(:disabled) { transform:translateY(-2px); border-color:var(--line-hi); background:var(--s2); }
+/* A card is thirty times the area of a toolbar button, and the same .97 on it
+   reads as a lurch rather than a press — the bigger the surface, the smaller the
+   scale has to be to say the same thing. */
+.card:active:not(:disabled) { scale:.985; }
+.card:hover:not(:disabled) .card-art { opacity:1; }
+.card:disabled { opacity:.45; }
+
+/* A folder is a stack of sheets, not an emoji — it has to read as "there is
+   more behind this" at a glance, which is the whole navigation affordance. */
+.card.folder .card-art { position:relative; background:var(--sunk); }
+/* The generated cover under a folder sits back, so the sheet stack stays the
+   thing you read. */
+.card.folder .card-art svg { opacity:.45; }
+.card.folder .card-art::before, .card.folder .card-art::after {
+    content:""; position:absolute; left:50%; top:50%; width:46%; height:34%;
+    border:1px solid var(--line-hi); border-radius:6px; background:var(--s2);
+    transform:translate(-50%, -50%);
+    transition:transform .22s var(--ease);
+}
+.card.folder .card-art::before { transform:translate(-50%, -64%) rotate(-4deg); opacity:.55; }
+.card.folder:hover .card-art::before { transform:translate(-50%, -76%) rotate(-7deg); }
+.card.folder:hover .card-art::after { transform:translate(-50%, -44%); border-color:var(--hi2); }
+
+/* ...unless there's something to show. Four covers from inside beat any icon at
+   saying what a collection is. The stack-of-sheets is the empty state now. */
+.card.folder .card-art.mosaic {
+    display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
+    /* The base .card-art centres its child; a mosaic's tiles must fill instead,
+       or every one of them lays out at zero height. */
+    place-items:stretch; gap:1px; background:var(--line); opacity:.85;
+}
+.card.folder .card-art.mosaic::before, .card.folder .card-art.mosaic::after { content:none; }
+.card.folder .card-art.mosaic img { width:100%; height:100%; object-fit:cover; display:block; }
+.card.folder:hover .card-art.mosaic { opacity:1; }
+
+/* ── transfers ────────────────────────────────────────────────────────────── */
+.transfers {
+    position:fixed; right:22px; bottom:22px; width:360px; max-width:calc(100vw - 36px);
+    background:var(--glass-solid); backdrop-filter:blur(14px) saturate(1.2);
+    border:1px solid var(--line-hi); border-radius:12px; box-shadow:var(--shadow);
+    z-index:30; overflow:hidden;
+}
+.transfers header {
+    display:flex; align-items:center; gap:6px; padding:10px 10px 10px 14px;
+    background:none; border:none; border-bottom:1px solid var(--line);
+    cursor:pointer; position:static; backdrop-filter:none;
+}
+.transfers header b { font-size:12px; font-weight:600; color:var(--dim); }
+.transfers ul { list-style:none; margin:0; padding:0; max-height:40vh; overflow-y:auto; }
+.transfers li { padding:11px 14px; border-top:1px solid var(--line); font-size:13px; }
+.transfers li:first-child { border-top:none; }
+.transfers .line { display:flex; align-items:baseline; gap:10px; }
+.transfers .tname { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.transfers .tmeta { color:var(--dim); font-family:var(--mono); font-size:11px; white-space:nowrap; }
+.transfers .tphase {
+    color:var(--dimmer); font-size:11px; margin-top:5px; font-family:var(--mono);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.transfers .bar { height:3px; border-radius:2px; background:var(--sunk); margin-top:9px; overflow:hidden; }
+.transfers .bar > div { height:100%; background:var(--hi); transition:width .3s var(--ease); }
+.transfers li.done .tname { color:var(--ok); }
+.transfers li.error .tname { color:#f9c0da; }
+
+/* ── player ───────────────────────────────────────────────────────────────── */
+.player {
+    border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:22px;
+    background:#000; box-shadow:var(--shadow);
+}
+.player-head {
+    display:flex; align-items:center; gap:12px; padding:10px 14px;
+    background:var(--glass-solid); border-bottom:1px solid var(--line);
+}
+.player-head b { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+.player-head a.ghost { text-decoration:none; font-size:13px; color:var(--dim); }
+.player-head a.ghost:hover { color:var(--fg); }
+
+/* What's queued, under the transport. One line: a run of forty is still one
+   "next" — the list itself is the shelf page you started it from. */
+.upnext {
+    display:flex; align-items:baseline; gap:9px; padding:7px 12px;
+    border-top:1px solid var(--line); font-size:12.5px;
+}
+.upnext .uplabel {
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--dimmer);
+}
+.upnext .wlink { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; }
+.upnext .upprice { color:var(--hi); font-family:var(--mono); font-size:11.5px; }
+.upnext .upleft { color:var(--dimmer); font-family:var(--mono); font-size:11px; }
+
+/* The one control on a shelf page that isn't a link: start the whole row. */
+.wiki .whead .file { margin-top:10px; }
+.player img { display:block; margin:0 auto; max-width:100%; }
+.player audio { display:block; width:100%; padding:20px; }
+.player .empty { padding:24px; margin:0; }
+
+/* ── what the agent drew (webmcp.js `annotate`) ─────────────────────────────
+   The accent is already the app's "look here" pointer, so the marks borrow it
+   rather than inventing a second one. */
+.ann-stage { position:relative; line-height:0; }
+.ann-boxes { position:absolute; inset:0; pointer-events:none; }
+.ann-box {
+    position:absolute; border:2px solid var(--hi); border-radius:3px;
+    box-shadow:0 0 0 1px #0009, 0 0 14px var(--hi-wash);
+}
+.ann-box span {
+    position:absolute; left:-2px; top:-20px; padding:1px 6px; border-radius:3px;
+    background:var(--hi); color:#0b0910; font-size:11px; line-height:17px;
+    font-family:var(--mono); white-space:nowrap;
+}
+/* A strip under the picture rather than over it: the file's own controls own
+   the bottom of the frame, and a tick drawn on top of them is a tick you
+   cannot click. */
+.ann-strip {
+    position:relative; height:30px; background:var(--s1);
+    border-top:1px solid var(--line); line-height:normal;
+}
+.ann-mark {
+    position:absolute; top:0; transform:translateX(-50%);
+    height:30px; padding:0 6px; border:0; background:none; cursor:pointer;
+    color:var(--hi); font-size:11px; font-family:var(--mono); white-space:nowrap;
+    max-width:22%; overflow:hidden; text-overflow:ellipsis;
+}
+.ann-mark::before {
+    content:""; position:absolute; left:50%; top:0; width:2px; height:8px;
+    background:var(--hi); transform:translateX(-50%);
+}
+/* Ticks always, labels on demand. Four marks inside the first minute of a
+   40-minute film land on top of each other, and four overlapping labels is a
+   smear — the tick still says "something is here" and the title says what. */
+.ann-mark span { display:none; padding-top:8px; line-height:16px; }
+.ann-mark:hover { z-index:2; }
+.ann-mark:hover span { display:inline-block; }
+.ann-mark:hover::before { height:30px; }
+
+/* ── the scene deck (ui/scenes.jsx) ────────────────────────────────────────
+   Below the player, not beside it: reviewing a description means watching the
+   moment it describes, so the picture stays the biggest thing on screen and the
+   list scrolls under it. Same accent as the timeline marks it corresponds to —
+   a scene in this list and its tick on the strip are one thing. */
+.deck { background:var(--s1); border-top:1px solid var(--line); font-size:13px; }
+.deck-head, .deck-foot {
+    display:flex; align-items:center; gap:10px; padding:10px 14px;
+}
+.deck-head { border-bottom:1px solid var(--line); }
+.deck-foot { border-top:1px solid var(--line); flex-wrap:wrap; }
+.deck-head b { color:var(--hi); }
+.deck-sub { color:var(--dim); font-size:12px; flex:1; }
+.deck-head .ghost { flex:0 0 auto; }
+
+/* Capped, then scrolled: an agent that describes ninety moments must not push
+   the publish button off the bottom of the page. */
+.deck-list { margin:0; padding:4px 0; list-style:none; max-height:260px; overflow-y:auto; }
+.deck-list li {
+    display:flex; align-items:baseline; gap:10px; padding:5px 14px;
+    border-left:2px solid transparent;
+}
+.deck-list li:hover { background:var(--s2); border-left-color:var(--hi); }
+.deck-at {
+    flex:0 0 auto; border:0; background:none; cursor:pointer; padding:0;
+    color:var(--hi); font-family:var(--mono); font-size:12px;
+}
+.deck-at:hover { text-decoration:underline; }
+.deck-text { flex:1; cursor:text; line-height:1.45; }
+input.deck-text {
+    background:var(--bg); color:inherit; font:inherit;
+    border:1px solid var(--hi); border-radius:3px; padding:2px 6px;
+}
+/* Only on the row being pointed at — a column of ✕ down the side of a list
+   reads as a list of things to delete. */
+.deck-drop { visibility:hidden; flex:0 0 auto; }
+.deck-list li:hover .deck-drop { visibility:visible; }
+
+/* ── splash ───────────────────────────────────────────────────────────────── */
+.splash { padding:26px 18px; background:var(--glass-solid); }
+.splash-stage {
+    margin:0 0 14px; text-align:center; color:var(--dim);
+    font-size:12px; font-family:var(--mono);
+}
+.splash-bar {
+    max-width:280px; margin:0 auto; height:3px; border-radius:2px;
+    background:var(--line); overflow:hidden;
+}
+.splash-bar i {
+    display:block; width:40%; height:100%; border-radius:2px; background:var(--hi);
+    animation:splash-slide 1.1s linear infinite;
+}
+
+@keyframes fade { from { opacity:0; } }
+@keyframes rise { from { opacity:0; transform:translateY(10px); } }
+/* Never from scale(0): nothing real appears out of nothing. .96 is a thing that
+   was already there, arriving. */
+@keyframes pop { from { opacity:0; transform:scale(.96); } }
+@keyframes splash-slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(250%); } }
+
+/* ── permalink page ───────────────────────────────────────────────────────── */
+.epdetail {
+    padding:28px; margin-bottom:22px; border:1px solid var(--line); border-radius:var(--r);
+    background:var(--glass-solid); backdrop-filter:blur(12px); box-shadow:var(--shadow);
+}
+.epdetail h2 { margin:0 0 8px; font-size:22px; font-weight:600; }
+.epdetail .epprice { color:var(--dim); font-family:var(--mono); font-size:13px; margin:0 0 20px; }
+.epdetail .empty { margin:14px 0 0; font-size:13px; }
+/* The title block sits UNDER the player now, so it no longer has to fight for the
+ * first screenful and no longer carries art — the video is the art. The thumbnail
+ * only comes back for things that cannot play (an article, a PDF). */
+.dhead { display:flex; gap:22px; align-items:flex-start; margin-bottom:20px; }
+.dhead > div { min-width:0; flex:1; }
+.dhead .card-art { flex:none; width:180px; height:120px; border-radius:12px; overflow:hidden; }
+.epdetail h2 { font-size:20px; line-height:1.3; }
+/* The climb to the show page. Reads as a crumb above the episode title, not as
+   an action — it is where you already are, one level up. */
+.dhead .dup { padding:0; margin:0 0 4px; font-size:13px; max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dactions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:2px 0 0; }
+.dactions .primary { text-decoration:none; }
+
+/* The stand-in for a player: what you see when something is still settling, or
+   is paid for and not yet bought. Full width, 16/9, one control on it — so the
+   page has the same shape before and after the video arrives and nothing jumps. */
+.poster {
+    position:relative; display:block; width:100%; padding:0; margin:0 0 18px;
+    overflow:hidden; border:1px solid var(--line); border-radius:12px;
+    background:var(--sunk); cursor:pointer;
+}
+.poster .card-art { aspect-ratio:16/9; border:none; opacity:.75; transition:opacity .2s var(--ease); }
+.poster:hover .card-art { opacity:1; }
+.poster .pplay, .wiki .whero .pplay {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    display:grid; place-items:center; width:64px; height:64px; padding-left:4px;
+    font-size:22px; color:var(--fg); border-radius:50%;
+    background:#08080ab3; border:1px solid var(--line-hi); backdrop-filter:blur(8px);
+    transition:transform .2s var(--ease), background .2s var(--ease);
+}
+.poster:hover .pplay, .wiki .whero:hover .pplay { transform:translate(-50%,-50%) scale(1.08); background:var(--hi2); }
+.poster:disabled { cursor:default; opacity:.6; }
+/* The player itself leads the page, so it loses the top margin it had as a
+   footer and keeps the 16/9 box the poster established. Its margins and its
+   height ceiling are set with the rest of the watch-page layout, below. */
+.epdetail .player video { display:block; width:100%; background:#000; }
+.epdetail .ddesc { margin:0 0 20px; font-size:14px; line-height:1.55; color:var(--dim); }
+.epdetail .facts dd { white-space:normal; }
+@media (max-width:720px) {
+    .dhead { flex-direction:column; }
+    .dhead .card-art { width:100%; }
+}
+
+/* ── responsive ───────────────────────────────────────────────────────────── */
+@media (max-width:900px) {
+    .workbench { grid-template-columns:1fr; }
+    .inspector { position:static; }
+    .pane.files { max-height:44vh; }
+}
+@media (max-width:720px) {
+    :root { --pad:14px; }
+    .app { padding-bottom:80px; }
+    header { gap:10px; flex-wrap:wrap; }
+    header h1 { font-size:15px; letter-spacing:.24em; }
+    .searchbar input { font-size:16px; }
+    .rail, .grid { grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; }
+    .card-art { font-size:26px; }
+    .transfers { right:10px; left:10px; bottom:10px; width:auto; }
+}
+
+/* Safari <18 and older Firefox have no backdrop-filter: fall back to a nearly
+ * opaque panel. Losing the blur is fine; losing the text contrast is not. */
+@supports not (backdrop-filter: blur(1px)) {
+    header { background:#08080af5; }
+    .pane, .transfers, .epdetail { background:#121215f7; }
+}
+
+/* Touch has no hover. A tap sets :hover and it STICKS there until you tap
+   something else, so every hover transform becomes a stuck state — and, worse,
+   anything REVEALED by hover is invisible until the tap that was meant to press
+   it. The ratings are that: on a phone the 👍/👎 on a card could not be reached
+   without first tapping the card, which opens it. */
+@media (hover: none) {
+    .card:hover:not(:disabled) { transform:none; }
+    .card:hover .card-art img, .wiki .whero:hover img { transform:none; }
+    .card.folder:hover .card-art::before { transform:translate(-50%, -64%) rotate(-4deg); }
+    .card.folder:hover .card-art::after { transform:translate(-50%, -50%); }
+    .poster:hover .pplay, .wiki .whero:hover .pplay { transform:translate(-50%, -50%) scale(1); }
+    .rate button:hover { transform:none; }
+    .cardwrap .rate, .wrow .rate { opacity:1; }
+}
+
+/* Reduced motion is FEWER and GENTLER, not none. What makes people ill is
+   movement — travel, scale, spin. A colour or opacity change carries meaning
+   (this is now active, this arrived, this is loading) and taking it away costs
+   comprehension for no benefit, so those stay. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation:none !important;
+        transition-property:opacity, color, background-color, border-color, filter !important;
+        transition-duration:.15s !important;
+    }
+    .splash-bar i { width:100%; }
+    .card:hover:not(:disabled), .rate button:hover { transform:none; }
+    .card:hover .card-art img, .wiki .whero:hover img { transform:none; }
+    button:active:not(:disabled) { scale:1; }
+    /* @starting-style would still fly the card in; it is a transition, and the
+       property list above already excludes transform — but the initial opacity
+       has to come back too or it never fades in at all. */
+    .tv-ask { transition-property:opacity !important; }
+}
+
+/* The session compass — where the kernel is pointing next. A quiet line, not a
+   banner: it reports on the page below rather than competing with it. */
+.compass {
+    display: flex;
+    align-items: baseline;
+    gap: .6rem;
+    flex-wrap: wrap;
+    margin: .25rem 0 1rem;
+    padding: .5rem .75rem;
+    border-left: 2px solid var(--hi);
+    background: var(--hi-wash);
+    font-size: .82rem;
+}
+.compass .clabel { color: var(--dim); letter-spacing: .04em; }
+.compass .cterms { color: var(--fg); font-weight: 600; }
+.compass .cdrift { color: var(--hi); letter-spacing: .18em; }
+.compass .cin { color: var(--dim); margin-left: auto; font-family: var(--mono); font-size: .78rem; }
+
+
+/* ── the wiki ─────────────────────────────────────────────────────────────────
+   A document, not a dashboard: one measure, real headings, links that look like
+   links. The only rule that matters here is that nothing competes with the prose
+   — no cards, no art, no boxes. The accent belongs to links, because on a wiki
+   the link IS the thing the page has decided is next. */
+/* `overflow-wrap` on the whole document: a file name, a path or a handle can be
+   one unbreakable 30-character word, and one of those is all it takes to push the
+   page sideways on a phone. */
+.wiki { max-width:62ch; margin:1.5rem auto 4rem; animation:rise .34s var(--ease) both; overflow-wrap:anywhere; }
+/* `.whead` is a <header>, and the bare `header` rule up top (the app chrome) is
+   flex + sticky + blurred and uppercases its h1 — which laid this page's header
+   out as five narrow columns of shredded text. Undo it here rather than rescoping
+   the chrome, which four other headers rely on. */
+.wiki .whead {
+    display:block; position:static; z-index:auto; gap:0; background:none; backdrop-filter:none;
+    border-bottom:1px solid var(--line); padding:0 0 1.1rem; margin-bottom:1.75rem;
+}
+.wiki .whead h1 { text-transform:none; }
+.wiki h1 { font-size:1.7rem; font-weight:300; letter-spacing:-.02em; margin:0; }
+.wiki .wsub { color:var(--dim); font-size:.82rem; margin:.55rem 0 0; line-height:1.5; }
+/* The counts wrap as separate items instead of one long dim string: on a phone a
+   "·"-joined line breaks mid-stat and reads as noise. */
+/* The nameplate. The handle is the biggest thing on the page on purpose — it is
+   the only line here derived from the reader rather than the publisher — and the
+   sentence under it is the numbers that produced it, so the name reads as an
+   instrument rather than a horoscope.
+   Two columns: who you are on the left, what you were watching on the right. It
+   breaks out of the 62ch measure the same way the rows below do, because two
+   columns inside a reading column is two narrow columns. */
+.wiki .wplate {
+    padding-bottom:1.6rem;
+    width:min(1192px, calc(100vw - 48px));
+    position:relative; left:50%; transform:translateX(-50%);
+    display:grid; gap:2rem 3rem; align-items:start;
+}
+@media (min-width:900px) { .wiki .wplate { grid-template-columns:minmax(0,1fr) minmax(0,26rem); } }
+@media (max-width:900px) { .wiki .wplate { width:auto; left:0; transform:none; } }
+/* The plate is full width; the sentence inside it is still prose. */
+.wiki .wself > .wsub, .wiki .wself > .wmirror { max-width:52ch; }
+.wiki .wcontinue h2 { margin-bottom:.6rem; }
+.wiki .wcontinue .whero { max-width:none; margin-bottom:.7rem; }
+.wiki .wcontinue h3 { font-size:1rem; }
+.wiki .wname {
+    font-size:clamp(1.6rem, 6.5vw, 2.8rem); font-weight:250; line-height:1.05; letter-spacing:-.03em;
+    background:linear-gradient(96deg, var(--fg) 12%, var(--hi) 78%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* The mirror line: a sentence about the reader, so it is set as prose. The
+   percentage meters that were here were a dashboard about the model — the same
+   numbers, said as the things they count, read without a legend. */
+.wiki .wmirror {
+    display:flex; flex-wrap:wrap; gap:.15rem 1.1rem; margin:1.1rem 0 0;
+    font-size:.92rem; line-height:1.6; color:var(--dim);
+}
+.wiki .wmirror b { font-weight:500; color:var(--hi); }
+.wiki .wmirror > span:first-child { font-family:var(--mono); font-size:.78rem; align-self:center; }
+/* The trail: what was actually opened, in order. Small on purpose — it is
+   evidence under a sentence, not a shelf. */
+.trail { display:flex; gap:5px; margin:1.1rem 0 0; flex-wrap:wrap; }
+.trailcell {
+    width:4.2rem; aspect-ratio:16/9; padding:0; border:1px solid var(--line);
+    border-radius:4px; overflow:hidden; background:var(--s2); cursor:pointer;
+    opacity:.55; transition:opacity .18s var(--ease), border-color .18s var(--ease);
+}
+/* Most recent first, and the eye should land there. */
+.trail .trailcell:first-child { opacity:1; }
+.trailcell:hover, .trailcell:focus-visible { opacity:1; border-color:var(--hi); }
+.trailcell img { width:100%; height:100%; object-fit:cover; display:block; }
+.wiki .wstats { display:flex; flex-wrap:wrap; gap:.3rem 1.2rem; margin:1.25rem 0 0; padding:0;
+    color:var(--dim); font-family:var(--mono); font-size:.78rem; }
+/* The taste line is prose, not chips — it is a sentence about the reader and it
+   gets a sentence's line-height and colour. */
+.wiki .wtaste { margin:.8rem 0 0; font-size:.9rem; line-height:1.65; color:var(--fg); }
+.wiki .wtaste .wpull { margin-right:.45rem; }
+.wiki .wtaste b { font-weight:500; color:var(--hi); }
+.wiki .wsec { margin:2.2rem 0; }
+/* The taste line rides in the stats row now — same sentence, one line, so the
+   whole self-portrait is a plate rather than five stacked sections. */
+.wiki .wstats .wpull { color:var(--fg); font-family:var(--sans, inherit); }
+.wiki .wstats b { font-weight:500; color:var(--hi); }
+/* The workings: the receipts for the portrait, closed by default. */
+.wworkings { margin:2.6rem 0 0; border-top:1px solid var(--line); padding-top:.8rem; }
+.wworkings > summary {
+    cursor:pointer; list-style:none; color:var(--dim);
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.16em; text-transform:uppercase;
+}
+.wworkings > summary::before { content:"+ "; }
+.wworkings[open] > summary::before { content:"– "; }
+.wworkings > summary:hover { color:var(--hi); }
+/* A season heading is a heading and a play button on one line. */
+.wiki .wsec h2 { display:flex; align-items:baseline; gap:.6rem; }
+.wiki .wsec h2 .shelfall { margin-left:auto; letter-spacing:0; text-transform:none; font-size:.75rem; }
+.wiki h2 {
+    font-size:.72rem; font-family:var(--mono); color:var(--dim);
+    letter-spacing:.16em; text-transform:uppercase; font-weight:400;
+    margin:0 0 .8rem; padding-bottom:.4rem; border-bottom:1px solid var(--line);
+}
+.wiki h3 { font-size:1.15rem; font-weight:500; margin:0 0 .5rem; }
+.wiki .wquote {
+    margin:0 0 .6rem; padding-left:.9rem; border-left:2px solid var(--line-hi);
+    color:var(--fg); line-height:1.6; font-size:.95rem;
+}
+.wiki .wmeta { color:var(--dim); font-size:.78rem; font-family:var(--mono); }
+.wiki .wlist { list-style:none; margin:0; padding:0; }
+.wiki .wlist > li { padding:.4rem 0; line-height:1.55; border-bottom:1px solid var(--line); font-size:.9rem; }
+.wiki .wlist > li:last-child { border-bottom:none; }
+.wiki .wrows > li { position:relative; display:flex; gap:.75rem; align-items:flex-start; padding:.6rem 0; }
+/* Watched: dimmed and ticked. Not hidden — a finished episode is still the one
+   you want to rewatch, it just should not be the one your eye lands on. */
+.wiki .wrow.done { opacity:.5; }
+.wiki .wrow.done:hover { opacity:1; }
+.wiki .wrow.done .wbody > .wlink::after { content:" ✓"; color:var(--hi); }
+/* Part way through: how far, under the row. */
+.wiki .wprog {
+    position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--line);
+}
+.wiki .wprog::before {
+    content:""; position:absolute; inset:0 auto 0 0; width:var(--p);
+    background:var(--hi); border-radius:1px;
+}
+.wiki .wbody { display:flex; flex-direction:column; gap:.15rem; min-width:0; flex:1; }
+/* Thumbnails are evidence, not decoration: only rows that carry a real frame get
+   one, and it stays small enough that the page still reads as prose. No generated
+   art here — a gradient block next to a sentence is just a coloured rectangle. */
+.wiki .wthumb { flex:0 0 auto; width:5.5rem; aspect-ratio:16/9; border-radius:4px; overflow:hidden;
+    background:var(--s2); border:1px solid var(--line); }
+.wiki .wthumb img { width:100%; height:100%; object-fit:cover; display:block; }
+/* The hero: full measure, 16/9, and a player rather than a picture. */
+.wiki .whero { position:relative; display:block; width:100%; padding:0; margin:0 0 1rem;
+    aspect-ratio:16/9; overflow:hidden; border:1px solid var(--line); border-radius:10px;
+    background:var(--s2); cursor:pointer; }
+.wiki .whero img { width:100%; height:100%; object-fit:cover; display:block; opacity:.8;
+    transition:opacity .25s var(--ease), transform .45s var(--ease); }
+.wiki .whero:hover img { opacity:1; transform:scale(1.02); }
+.wiki .wlede { color:var(--dim); font-size:.85rem; line-height:1.5; }
+.wiki .wconcepts { display:flex; flex-wrap:wrap; gap:.1rem .9rem; margin:.6rem 0 0; }
+
+/* A wikilink. Underlined, because a link that only differs by colour is a colour. */
+.wlink {
+    background:none; border:none; padding:0; font:inherit; cursor:pointer;
+    color:var(--hi); text-align:left;
+    text-decoration:underline; text-decoration-color:#a78bfa4d;
+    text-underline-offset:.18em; transition:color .15s var(--ease);
+}
+.wlink:hover { color:#c4b5fd; text-decoration-color:currentColor; }
+.wiki .wconcepts .wlink { font-family:var(--mono); font-size:.78rem; }
+
+
+/* ── the explicit signal, and the rail it feeds ───────────────────────────────
+ *
+ * Two additions that belong together: 👍/👎 is the only thing a viewer ever tells
+ * the kernel out loud, and the rail is where it shows the result. Pressing one
+ * has to visibly move the other — so neither is styled to sit quietly.
+ */
+
+/* Real cover art. `object-fit: cover` inside a fixed 16/10 box: archive.org's
+   thumbnails are every aspect ratio there is and a grid that reflows per tile
+   reads as broken. Unblurred, unlike the generated fallback beneath it. */
+.card-art img {
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; background:var(--sunk);
+}
+.card:hover .card-art img { transform:scale(1.03); }
+.card-art img { transition:transform .35s var(--ease); }
+
+/* The card is a <button>, so the rating pair cannot live inside it — a button
+   inside a button is invalid and browsers drop one of them. It overlays instead. */
+.cardwrap { position:relative; }
+.cardwrap .rate { position:absolute; top:8px; right:8px; }
+
+.rate { display:inline-flex; gap:4px; }
+.rate button {
+    display:grid; place-items:center; width:32px; height:32px; padding:0;
+    font-size:15px; line-height:1; cursor:pointer;
+    border-radius:9px; border:1px solid var(--line);
+    background:var(--glass-solid); backdrop-filter:blur(8px);
+    filter:grayscale(1) opacity(.5);
+    transition:filter .15s var(--ease), border-color .15s var(--ease), transform .15s var(--ease);
+}
+.rate.mini button { width:26px; height:26px; font-size:12px; border-radius:8px; }
+.rate button:hover { filter:none; border-color:var(--line-hi); transform:translateY(-1px); }
+/* Lit means "this is currently what the kernel is being told", not "hovered" —
+   so it stays coloured with no pointer anywhere near it. */
+.rate button.on { filter:none; border-color:var(--hi2); background:var(--hi-wash); }
+/* The rating pair on a card is quiet until you go near the card, because a grid
+   with two controls on every tile is a control panel, not a catalog. */
+.cardwrap .rate { opacity:0; transition:opacity .15s var(--ease); }
+.cardwrap:hover .rate, .cardwrap:focus-within .rate { opacity:1; }
+.cardwrap .rate:has(.on) { opacity:1; }
+
+/* On the item page it is not hidden: this is where you have actually formed an
+   opinion, so the ask is explicit. */
+.dtaste { display:flex; align-items:center; gap:12px; margin:16px 0 4px; }
+.dtaste .empty { margin:0; }
+
+/* ── the rail ─────────────────────────────────────────────────────────────── */
+.withrail { display:grid; gap:24px; align-items:start; }
+@media (min-width:1000px) { .withrail { grid-template-columns:minmax(0,1fr) 300px; } }
+/* Follows the player down a long item page — the recommendations are for while
+   you're watching, which is exactly when the top of the page is scrolled away. */
+@media (min-width:1000px) { .nextup { position:sticky; top:16px; } }
+
+.nextup h3 {
+    margin:0 0 2px; font-size:12px; font-weight:500; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--hi);
+}
+.nextup .rwhy { margin:0 0 10px; font-size:11.5px; color:var(--dim); }
+.nextup ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+.nextup li { position:relative; }
+.nextup li .rate { position:absolute; top:8px; right:8px; opacity:0; }
+.nextup li:hover .rate, .nextup li:focus-within .rate, .nextup li .rate:has(.on) { opacity:1; }
+
+/* Two columns: a thumbnail wide enough to actually read, and a text block that
+   owns its own vertical rhythm. The title and the collection were direct grid
+   children before, which put them in separate rows of the outer grid and left the
+   thumbnail spanning both — the strips. */
+.rrow {
+    display:grid; grid-template-columns:104px minmax(0,1fr); gap:10px; align-items:start;
+    width:100%; padding:6px; text-align:left; cursor:pointer;
+    border:1px solid transparent; border-radius:10px; background:none;
+    transition:background .15s var(--ease), border-color .15s var(--ease);
+}
+.rrow:hover { background:var(--s1); border-color:var(--line); }
+.rrow .card-art { aspect-ratio:16/9; border-radius:6px; border:none; opacity:1; font-size:16px; }
+.rrow .card-art svg { filter:blur(6px) saturate(1.1); transform:scale(1.4); }
+.rtext { display:flex; flex-direction:column; gap:3px; min-width:0; padding-right:52px; }
+.rname {
+    font-size:12.5px; line-height:1.35; color:var(--fg);
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.rmeta { font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── the app row ──────────────────────────────────────────────────────────────
+ * Its own row above search, not a group inside the filter bar: everything in
+ * that bar narrows one catalog, and this REPLACES the catalog — the publishers,
+ * the collections, the vocabulary and every id on the page. Sits above the
+ * search box for the same reason, and stays visible on every page below it.
+ */
+.appbar {
+    display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+    margin:0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--line);
+}
+.appbar .flabel { margin-right:8px; }
+.atab {
+    padding:6px 12px; font-size:13px; font-weight:500; cursor:pointer;
+    color:var(--dim); background:none; border:1px solid transparent; border-radius:9px;
+    transition:color .15s var(--ease), background .15s var(--ease);
+}
+.atab:hover { color:var(--fg); background:var(--s1); }
+.atab.on { color:var(--fg); background:var(--s2); border-color:var(--line-hi); }
+/* The accent marks the app you're in, and nothing else on this row. */
+.atab.on::before { content:"● "; color:var(--hi); font-size:9px; vertical-align:middle; }
+.acount { margin-left:auto; font-size:11.5px; color:var(--dimmer); }
+
+/* A wiki row is a line of text with a rating pair at the end of it, so the pair
+   is pushed right rather than sitting in the flow after the metadata. */
+.wrow { position:relative; padding-right:64px; }
+.wrow .rate { position:absolute; top:0; right:0; opacity:0; transition:opacity .15s var(--ease); }
+.wrow:hover .rate, .wrow:focus-within .rate, .wrow .rate:has(.on) { opacity:1; }
+
+/* The wikilinks out of an item page were rendering as one run-on word — they are
+   <button>s in a <p>, so there is no whitespace between them to collapse. */
+.wconcepts { display:flex; flex-wrap:wrap; gap:6px 14px; }
+
+/* The player is the hero of the item page and the <h2> under it says the name, so
+   the transport bar's copy of it is the same words twice. Save and close stay. */
+.epdetail .player-head b { display:none; }
+.epdetail .player-head { justify-content:flex-end; padding:6px 10px; min-height:0; }
+
+/* A `1fr` track is `minmax(auto, 1fr)`, and that `auto` floor is the item's
+   min-content width — so one long filename widened its column, every other column
+   followed, and the fourth card hung off the right edge of the page. `min-width:0`
+   on the grid ITEM lets the explicit minmax() floor be the real floor.
+   Applies to both card grids; they have had this latent since they were written. */
+.grid > *, .rail > * { min-width:0; }
+/* …and with the track no longer growing to fit it, the name has to wrap. */
+.card-name { overflow-wrap:anywhere; }
+
+/* A real photograph does not need to be held back — the 70% was there to keep a
+   generated gradient from competing with the title over it. */
+.card-art:has(img) { opacity:1; }
+
+/* Audio: the cover fills the player's box and the transport sits on it, so an
+   audio item page has the same shape as a video one instead of a strip of
+   controls under 600px of nothing. */
+.acover { position:relative; display:grid; }
+.acover .card-art { aspect-ratio:16/7; border:none; opacity:.85; }
+.acover audio {
+    position:absolute; left:0; right:0; bottom:0; width:100%;
+    padding:12px; background:linear-gradient(#0000, #08080ae6 55%);
+}
+
+/* Casting. The accent marks an active session, because a cast button that looks
+   the same connected and disconnected is a button you press twice. */
+.player-head .cast.on { color: var(--hi); }
+
+/* ── the guide ────────────────────────────────────────────────────────────────
+   A grid whose x-axis is time. Cells are absolutely positioned by percentage of
+   the window, which is what makes the first cell of a row able to start before
+   the window does — a programme you joined halfway through, clipped by the row's
+   overflow, exactly as a guide draws it. */
+.guide-hero { display:flex; gap:18px; padding:0 0 18px; border-bottom:1px solid var(--line); margin-bottom:14px; }
+.guide-art { flex:0 0 clamp(180px, 24vw, 300px); border-radius:8px; overflow:hidden; background:var(--s2); }
+.guide-art img, .guide-art > * { width:100%; display:block; }
+.guide-about { min-width:0; flex:1; }
+.guide-about h2 { margin:0 0 4px; font-size:1.5rem; }
+.guide-when { display:flex; align-items:center; gap:10px; color:var(--dim); font-size:.85rem; margin:0 0 10px; }
+.guide-bar { flex:0 0 120px; height:3px; background:var(--dimmer); border-radius:2px; overflow:hidden; }
+.guide-bar i { display:block; height:100%; background:var(--hi); }
+.guide-title { margin:0 0 6px; font-weight:600; }
+.guide-desc { margin:0 0 12px; color:var(--dim); font-size:.9rem; line-height:1.45; }
+
+/* The hero has to stay put while the lineup scrolls — the whole point of a guide
+   is comparing rows against the thing you have selected. Rather than guess the
+   sticky offset under a sticky header, the PAGE stops scrolling and the row list
+   scrolls inside itself. Same shape the results view already uses. */
+.app:has(.guide) { display:flex; flex-direction:column; height:100dvh; padding-bottom:16px; }
+.viewer:has(> .guide) { display:flex; flex-direction:column; flex:1; min-height:0; }
+.guide { display:flex; flex-direction:column; flex:1; min-height:0; }
+.guide-hero { flex:none; }
+
+/* The tuner. One field, because a channel that is a query needs exactly one
+   thing said to it — the two knobs walk.js exposes (temperature, anchor) belong
+   on the channel once it exists, not in front of it as a settings panel nobody
+   fills in before they have heard anything. */
+.tuner { flex:none; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
+.tuner input { flex:1 1 260px; min-width:0; padding:9px 12px; border-radius:8px;
+    background:var(--glass); border:1px solid var(--line); color:var(--fg); font:inherit; }
+.tuner input:focus { outline:none; border-color:var(--hi2); background:var(--glass-hi); }
+.tuner input::placeholder { color:var(--dim); }
+.tuner input:disabled { opacity:.6; }
+.tuner-miss { flex-basis:100%; color:var(--dim); font-size:.82rem; }
+/* The clips switch. Sits beside Tune rather than under it: it changes what the
+   same query means, so it has to be readable in the same glance as the query. */
+.tuner-clips { flex:none; display:flex; align-items:center; gap:5px; cursor:pointer;
+    color:var(--dim); font-size:.82rem; user-select:none; }
+.tuner-clips input { flex:none; width:14px; min-width:0; height:14px; padding:0; accent-color:var(--hi2); }
+.tuner-clips:hover { color:var(--fg); }
+/* Channel 0 is the tuned one, and it should read as the viewer's, not the
+   catalog's. */
+.guide-row:first-of-type .guide-no { color:var(--hi); }
+.guide-grid { flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; }
+/* …which also gives the ruler something to stick to. */
+.guide-ruler { position:sticky; top:0; z-index:2; background:var(--bg); }
+.guide-top { display:flex; align-items:flex-start; gap:10px; }
+.guide-top .tuner { flex:1 1 auto; }
+.guide-rand { flex:none; white-space:nowrap; }
+.guide-go { display:flex; gap:10px; flex-wrap:wrap; }
+.guide-ruler { display:flex; align-items:flex-end; height:28px; padding-bottom:2px; color:var(--dim); font-size:.8rem; }
+.guide-date { flex:0 0 clamp(150px, 22vw, 260px); color:var(--hi); font-weight:600; }
+.guide-marks { position:relative; flex:1; height:100%; }
+.guide-marks span { position:absolute; bottom:2px; transform:translateX(-4px); white-space:nowrap; }
+
+/* "Now" as a tick on the ruler plus a lit cell per row. A full-height rule
+   through the grid is the prettier version and needs the rows to stop clipping
+   their own cells to draw it — not worth the layout. */
+.guide-now { position:absolute; top:16px; height:10px; width:2px; background:var(--hi); pointer-events:none; }
+
+.guide-row { display:flex; gap:2px; margin-bottom:2px; height:46px; }
+.guide-row.on .guide-name { color:var(--hi); }
+.guide-name { flex:0 0 clamp(150px, 22vw, 260px); display:flex; align-items:center; gap:10px;
+    background:none; border:0; color:var(--fg); text-align:left; cursor:pointer; padding:0 8px 0 0;
+    min-width:0; font:inherit; }
+.guide-name > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.guide-name small { display:block; color:var(--dim); font-size:.72rem; }
+.guide-no { flex:0 0 22px; color:var(--dim); font-variant-numeric:tabular-nums; text-align:right; }
+
+.guide-cells { position:relative; flex:1; overflow:hidden; }
+.guide-cell { position:absolute; top:0; bottom:0; box-sizing:border-box;
+    background:var(--glass); border:1px solid var(--line); border-radius:4px;
+    color:var(--fg); font:inherit; font-size:.85rem; text-align:left; padding:0 10px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+.guide-cell.live { background:var(--hi-wash); border-color:var(--hi2); color:var(--fg); }
+.guide-cell:hover { background:var(--glass-hi); border-color:var(--line-hi); }
+
+/* On a phone the hero is competing with the lineup for one screen, so it keeps
+   its shape and gives up its size: a thumbnail, the times, and what is on. */
+@media (max-width: 700px) {
+    .guide-art { flex-basis:112px; }
+    .guide-about h2 { font-size:1.1rem; }
+    .guide-desc { display:none; }
+    .guide-date { flex-basis:118px; font-size:.72rem; }
+    .guide-name { flex-basis:118px; }
+    /* The pinned hero + scroll-inside-the-grid shape needs a screen tall enough
+       to hold both. A phone isn't: the hero ate the 100dvh and the lineup got
+       zero height with no page scroll to reach it. So on a phone the page
+       scrolls, the way every other view here already does. */
+    .app:has(.guide) { height:auto; }
+    .viewer:has(> .guide), .guide { display:block; }
+    .guide-grid { overflow:visible; }
+    .guide-ruler { position:static; }
+}
+
+/* ── the watch page ───────────────────────────────────────────────────────────
+   Everything else on this site is reading width. This page is a picture, and it
+   was being framed like a paragraph: 1240 shell − 300 rail − two 28px card
+   paddings left an 812px video on a 1500px display, with the rest of the screen
+   as margin. Three changes, no new markup.
+
+   1. The shell itself is wider on this page and only this page. Widening just the
+      row left the back bar, and then the header, hanging inboard of the video,
+      which reads as a bug; widening the shell keeps everything aligned. Below the
+      cap nothing moves, and above it the page opening out reads as what it is. */
+.app:has(.withrail) { max-width:1560px; }
+/* 2. The rail earns a little more room at the width where there is room to earn. */
+@media (min-width:1240px) { .withrail { grid-template-columns:minmax(0,1fr) 340px; } }
+
+/* 3. The video reaches the edges of the card it leads, instead of sitting inside
+      it with a second frame drawn around it. Same for the poster, so the page
+      keeps its shape across the moment the video arrives. */
+.epdetail .player, .epdetail .poster {
+    margin:0 -28px 20px; border-radius:0; border-width:0 0 1px;
+}
+/* Only when it actually leads the card. A series page puts a breadcrumb above
+   the video, and pulling the top margin up regardless slid the player over it. */
+.epdetail .player:first-child, .epdetail .poster:first-child {
+    margin-top:-28px; border-radius:var(--r) var(--r) 0 0;
+}
+.epdetail .player video { max-height:78vh; }
+
+/* On a phone the card chrome is 84px of furniture on a 390px screen, and the
+   video is what you opened. Full bleed: width is the VIEWPORT, positioned off
+   its own centre, so it is immune to how much padding is between here and the
+   body — which is the thing that kept getting this wrong. */
+@media (max-width:720px) {
+    .epdetail {
+        padding:4px var(--pad) 20px; border:0; border-radius:0;
+        background:none; backdrop-filter:none; box-shadow:none;
+    }
+    .epdetail .player, .epdetail .poster {
+        width:100vw; max-width:100vw; margin:0 0 16px 50%; translate:-50% 0;
+        border-radius:0; border-left-width:0; border-right-width:0;
+    }
+    /* Nothing is competing for the screen here, so let it use it. */
+    .epdetail .player video { max-height:none; }
+    .withrail { gap:20px; }
+}
+
+/* ── footer ───────────────────────────────────────────────────────────────── */
+/* One line under everything: what the site is, and the policy that says it in
+   full. `flex:none` because the results and guide views make .app a flex column
+   with a fixed height — without it the footer gets squeezed to nothing there. */
+.foot {
+    flex:none; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    margin-top:40px; padding:18px 0; border-top:1px solid var(--line);
+    font-size:12px; color:var(--dimmer);
+}
+.foot a { color:var(--dim); text-decoration:none; }
+.foot a:hover { color:var(--fg); }
+
+
+/* ── the TV ───────────────────────────────────────────────────────────────── */
+/* Fixed, not a page section: the TV takes the viewport away from the browse
+   chrome entirely. On a phone that is the only sane reading of "full screen",
+   and on a desktop it is what the picture deserves. */
+.tv { position:fixed; inset:0; z-index:60; background:#000; overscroll-behavior:none;
+    touch-action:pan-y; }
+.tv-screen { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+.tv-screen .player.bare { width:100%; height:100%; margin:0; }
+.tv-screen .ann-stage, .tv-screen .acover { width:100%; height:100%; }
+.tv-screen video, .tv-screen img { width:100%; height:100%; object-fit:contain; background:#000; }
+.tv-screen .empty { color:var(--dim); }
+.bare-cast { position:absolute; top:12px; right:12px; z-index:2; }
+
+/* The glass. Every control is auto; the space between them belongs to the
+   video, so a tap that isn't on a button reaches the native transport. */
+.tv-glass { position:absolute; inset:0; pointer-events:none;
+    transition:opacity .28s ease; }
+.tv-glass > *, .tv-glass button { pointer-events:auto; }
+.tv.idle .tv-glass { opacity:0; }
+.tv.idle { cursor:none; }
+
+.glass { background:rgba(18,18,22,.55); border:1px solid rgba(255,255,255,.14);
+    -webkit-backdrop-filter:blur(16px) saturate(160%); backdrop-filter:blur(16px) saturate(160%);
+    color:#fff; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,.45); }
+
+.tv-bar { position:absolute; top:0; left:0; right:0; display:flex; align-items:center;
+    gap:8px; padding:12px; }
+.tv-gap { flex:1; }
+.tv-badge { display:flex; align-items:center; gap:10px; padding:8px 14px;
+    font-weight:600; max-width:52vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tv-badge b { color:var(--hi); font-variant-numeric:tabular-nums; }
+.tv-btn { padding:8px 14px; border-radius:12px; background:transparent; border:0;
+    color:#fff; font:inherit; cursor:pointer; }
+.glass.tv-btn { border:1px solid rgba(255,255,255,.14); }
+.tv-btn:hover { background:rgba(255,255,255,.12); }
+.tv-btn.on { background:rgba(255,255,255,.16); box-shadow:inset 0 0 0 1px var(--hi); }
+
+/* Desktop affordance for what a swipe does on a phone. */
+.tv-side { position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; gap:8px; }
+.tv-hop { width:44px; height:44px; border-radius:22px; font-size:1rem; cursor:pointer; }
+
+/* Sits clear of the native transport bar, which owns the bottom ~48px. */
+.tv-foot { position:absolute; left:12px; right:12px; bottom:64px; max-width:560px;
+    padding:14px 16px; display:flex; gap:14px; align-items:flex-start; }
+.tv-what { min-width:0; flex:1; }
+.tv-what b { display:block; }
+.tv-slot { margin:2px 0; color:rgba(255,255,255,.62); font-size:.82rem; }
+.tv-desc { margin:4px 0 0; color:rgba(255,255,255,.72); font-size:.84rem; line-height:1.4; }
+.tv-next { margin:6px 0 0; color:rgba(255,255,255,.5); font-size:.78rem; }
+/* Two ways out of the channel, stacked so the second never squeezes the title. */
+.tv-outs { flex:none; display:flex; flex-direction:column; gap:6px; align-items:stretch; }
+.tv-prog { position:absolute; left:16px; right:16px; bottom:8px; height:2px;
+    background:rgba(255,255,255,.18); border-radius:2px; overflow:hidden; }
+.tv-prog i { display:block; height:100%; background:var(--hi); }
+
+/* The deck slides in over the picture rather than pushing it — the video never
+   moves or resizes while you are picking. */
+.tv-deck { position:absolute; top:0; right:0; bottom:0; width:min(360px, 88vw);
+    z-index:2; border-radius:0; border-width:0 0 0 1px;
+    display:flex; flex-direction:column; gap:12px; padding:16px;
+    transform:translateX(101%); transition:transform .3s var(--ease-drawer); }
+.tv-deck.out { transform:none; }
+.tv-deck .tuner { margin:0 34px 0 0; flex:none; }
+.tv-rand b { font-style:normal; }
+.tv-deck .tuner input { background:rgba(0,0,0,.35); color:#fff; border-color:rgba(255,255,255,.18); }
+.tv-chans { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.tv-chan { display:flex; align-items:center; gap:10px; padding:9px 12px; text-align:left;
+    border:1px solid rgba(255,255,255,.1); border-radius:10px; background:rgba(255,255,255,.03);
+    color:#fff; font:inherit; cursor:pointer; }
+.tv-chan:hover { background:rgba(255,255,255,.09); }
+.tv-chan.on { border-color:var(--hi); background:rgba(255,255,255,.12); }
+.tv-chan b { flex:0 0 20px; color:var(--hi); font-variant-numeric:tabular-nums; text-align:right; }
+.tv-chan > span { min-width:0; overflow:hidden; }
+.tv-chan > span, .tv-chan small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+.tv-chan small { color:rgba(255,255,255,.55); font-size:.72rem; }
+.tv-x { position:absolute; top:10px; right:12px; width:28px; height:28px; padding:0;
+    border:1px solid rgba(255,255,255,.18); border-radius:8px; background:rgba(0,0,0,.35);
+    color:#fff; font-size:1.1rem; line-height:1; cursor:pointer; }
+.tv-x:hover { background:rgba(255,255,255,.14); }
+.tv-tip { margin:0; flex:none; color:rgba(255,255,255,.45); font-size:.72rem; line-height:1.4; }
+
+/* The two channels a hop away, fetching their headers. Not display:none and not
+   visibility:hidden — either can get the element skipped by the media stack, and
+   then the preload it exists for never happens. One pixel, off the screen. */
+.tv-pre { position:absolute; left:-9999px; top:0; width:1px; height:1px;
+    overflow:hidden; pointer-events:none; }
+
+/* Phone: the picture is the screen, and the footer gets out of its own way. */
+@media (max-width: 720px) {
+    /* Chevrons are a mouse affordance; the gesture is the control here. */
+    .tv-side { display:none; }
+    .tv-foot { left:8px; right:8px; bottom:56px; max-width:none; flex-direction:column; gap:8px; padding:12px; }
+    .tv-foot .tv-outs { flex-direction:row; flex-wrap:wrap; align-self:flex-start; }
+    .tv-desc, .tv-next { display:none; }
+}
+
+/* The agent's card. Outside .tv-glass on purpose: the chrome fades on idle and
+   a question must not vanish while it is being read. */
+.tv-ask { position:absolute; left:50%; bottom:96px; transform:translateX(-50%);
+    z-index:3; width:min(440px, calc(100vw - 24px)); padding:16px 18px;
+    /* It arrives from where it lives — up from the foot of the picture, the same
+       direction the glass controls sit. A question that simply APPEARS over video
+       reads as a rendering glitch for the first fifty milliseconds, which is
+       exactly the moment someone is deciding whether to trust it.
+       ponytail: entrance only. React unmounts the card the instant it is
+       answered, so an exit needs a state machine to keep it mounted — and the
+       honest reading of a pressed button is that it is done, immediately. */
+    opacity:1; transition:opacity .22s var(--ease), transform .22s var(--ease); }
+@starting-style { .tv-ask { opacity:0; transform:translateX(-50%) translateY(8px) scale(.97); } }
+.tv-ask p { margin:0 0 12px; font-size:1rem; line-height:1.45; }
+.tv-ask-go { display:flex; gap:8px; flex-wrap:wrap; }
+.tv-ask .tv-btn { border:1px solid rgba(255,255,255,.16); }
+.tv-ask .tv-btn.primary { background:var(--hi); border-color:var(--hi); color:#0b0b0f; font-weight:600; }
+.tv-ask small { display:block; margin-top:10px; color:rgba(255,255,255,.45); font-size:.7rem; }
+@media (max-width: 720px) { .tv-ask { bottom:auto; top:64px; } }
