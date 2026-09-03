@@ -16,3 +16,5 @@ stage_volumes/
 # quickbeam embeddings exports — served by scripts/serve-embeddings.js
 *.embeddings.ndjson
 /notes
+
+._sond3r.git
